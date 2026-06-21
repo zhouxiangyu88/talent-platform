@@ -1,0 +1,507 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>达人运营平台</title>
+    <link rel="stylesheet" href="/styles.css?v=20260619-dashboard" />
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="brand-mark">D</span>
+        <div>
+          <strong>达人中台</strong>
+          <small>Creator Ops</small>
+        </div>
+      </div>
+
+      <nav class="nav">
+        <a class="active" href="#dashboard" data-view="dashboard">首页概览</a>
+        <a href="#influencers" data-view="influencers">达人库</a>
+        <a href="#projects" data-view="projects">项目库</a>
+        <a href="#contents" data-view="contents">内容库</a>
+      </nav>
+    </aside>
+
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">CREATOR OPERATIONS PLATFORM</p>
+          <h1>达人运营平台</h1>
+        </div>
+        <button id="open-create-button" class="primary-button">+ 新增达人</button>
+      </header>
+
+      <section class="hero">
+        <div>
+          <p id="hero-label" class="hero-label">第二轮开发：项目库</p>
+          <h2 id="hero-title">把合作项目也单独管理起来。</h2>
+          <p id="hero-description" class="hero-description">
+            项目库会为下一轮“内容关联项目”提前打地基，内容录入时可以选择项目，也可以不选。
+          </p>
+        </div>
+        <div class="hero-card">
+          <span>V1</span>
+          <strong id="hero-card-title">达人 + 项目</strong>
+          <small>前端 + 后端 + 数据库继续扩展</small>
+        </div>
+      </section>
+
+      <section id="stats" class="stats" aria-label="数据概览"></section>
+
+      <div id="message" class="message" hidden></div>
+
+      <section id="dashboard-section" class="dashboard-grid page-section">
+        <article class="content-card dashboard-panel wide-panel">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">RECENT CONTENTS</p>
+              <h2>近期发布内容</h2>
+            </div>
+          </div>
+          <div id="recent-content-list" class="mini-list"></div>
+        </article>
+
+        <article class="content-card dashboard-panel">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">SYNC STATUS</p>
+              <h2>同步状态</h2>
+            </div>
+          </div>
+          <div id="sync-status-list" class="summary-list"></div>
+        </article>
+
+        <article class="content-card dashboard-panel">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">PLATFORM</p>
+              <h2>平台分布</h2>
+            </div>
+          </div>
+          <div id="platform-list" class="summary-list"></div>
+        </article>
+      </section>
+
+      <section id="influencer-section" class="content-card page-section" hidden>
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">INFLUENCER DATABASE</p>
+            <h2>达人库</h2>
+          </div>
+          <span id="influencer-result-count" class="result-count">加载中...</span>
+        </div>
+
+        <div class="filters">
+          <label>
+            搜索达人
+            <input id="influencer-keyword-input" type="search" placeholder="输入达人名称" />
+          </label>
+          <label>
+            媒体平台
+            <select id="platform-filter">
+              <option value="">全部平台</option>
+              <option value="小红书">小红书</option>
+              <option value="抖音">抖音</option>
+              <option value="B站">B站</option>
+              <option value="视频号">视频号</option>
+              <option value="微博">微博</option>
+            </select>
+          </label>
+          <button id="reset-influencer-filter-button" class="secondary-button" type="button">重置</button>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>达人</th>
+                <th>平台</th>
+                <th>分类</th>
+                <th>粉丝数</th>
+                <th>负责人</th>
+                <th>主要联系方式</th>
+                <th>状态</th>
+                <th>更新时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="influencer-list"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="project-section" class="content-card page-section" hidden>
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">PROJECT DATABASE</p>
+            <h2>项目库</h2>
+          </div>
+          <span id="project-result-count" class="result-count">加载中...</span>
+        </div>
+
+        <div class="filters">
+          <label>
+            搜索项目
+            <input id="project-keyword-input" type="search" placeholder="输入项目名称或编号" />
+          </label>
+          <label>
+            项目状态
+            <select id="project-status-filter">
+              <option value="">全部状态</option>
+              <option value="进行中">进行中</option>
+              <option value="已结束">已结束</option>
+              <option value="归档">归档</option>
+            </select>
+          </label>
+          <button id="reset-project-filter-button" class="secondary-button" type="button">重置</button>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>项目名称</th>
+                <th>项目编号</th>
+                <th>状态</th>
+                <th>负责人</th>
+                <th>开始日期</th>
+                <th>结束日期</th>
+                <th>更新时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="project-list"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="content-section" class="content-card page-section" hidden>
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">CONTENT DATABASE</p>
+            <h2>内容库</h2>
+          </div>
+          <span id="content-result-count" class="result-count">加载中...</span>
+        </div>
+
+        <div class="filters">
+          <label>
+            搜索内容
+            <input id="content-keyword-input" type="search" placeholder="输入标题、链接或达人" />
+          </label>
+          <label>
+            媒体平台
+            <select id="content-platform-filter">
+              <option value="">全部平台</option>
+              <option value="小红书">小红书</option>
+              <option value="抖音">抖音</option>
+              <option value="B站">B站</option>
+              <option value="视频号">视频号</option>
+              <option value="微博">微博</option>
+            </select>
+          </label>
+          <button id="reset-content-filter-button" class="secondary-button" type="button">重置</button>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>内容</th>
+                <th>达人</th>
+                <th>平台</th>
+                <th>项目</th>
+                <th>发布时间</th>
+                <th>播放</th>
+                <th>互动</th>
+                <th>同步状态</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="content-list"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="detail-section" class="content-card detail-card" hidden>
+        <div class="section-heading">
+          <div>
+            <p id="detail-eyebrow" class="eyebrow">DETAIL</p>
+            <h2 id="detail-title">详情</h2>
+          </div>
+          <button id="close-detail-button" class="secondary-button" type="button">返回列表</button>
+        </div>
+        <div id="detail-content" class="detail-grid"></div>
+      </section>
+    </main>
+
+    <dialog id="influencer-dialog">
+      <form id="influencer-form">
+        <input name="id" type="hidden" />
+
+        <div class="dialog-heading">
+          <div>
+            <p id="influencer-form-eyebrow" class="eyebrow">NEW INFLUENCER</p>
+            <h2 id="influencer-form-title">新增达人</h2>
+          </div>
+          <button class="icon-button dialog-close-button" type="button" aria-label="关闭">×</button>
+        </div>
+
+        <div class="form-row">
+          <label>
+            达人名称 <span>必填</span>
+            <input name="name" required maxlength="50" placeholder="例如：小鹿的厨房" />
+          </label>
+          <label>
+            媒体平台 <span>必填</span>
+            <select name="platform" required>
+              <option value="小红书">小红书</option>
+              <option value="抖音">抖音</option>
+              <option value="B站">B站</option>
+              <option value="视频号">视频号</option>
+              <option value="微博">微博</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="form-row">
+          <label>
+            平台账号 ID
+            <input name="account_id" maxlength="80" placeholder="例如：redbook_1001" />
+          </label>
+          <label>
+            主页链接
+            <input name="profile_url" maxlength="300" placeholder="达人主页 URL" />
+          </label>
+        </div>
+
+        <div class="form-row">
+          <label>
+            达人分类
+            <input name="category" maxlength="30" placeholder="例如：美食、科技、母婴" />
+          </label>
+          <label>
+            粉丝数
+            <input name="followers_count" type="number" min="0" value="0" />
+          </label>
+        </div>
+
+        <div class="form-row">
+          <label>
+            微信
+            <input name="wechat" maxlength="80" placeholder="微信号或联系人" />
+          </label>
+          <label>
+            手机号
+            <input name="phone" maxlength="40" placeholder="手机号" />
+          </label>
+        </div>
+
+        <div class="form-row">
+          <label>
+            邮箱
+            <input name="email" maxlength="120" placeholder="邮箱" />
+          </label>
+          <label>
+            负责人
+            <input name="owner" maxlength="40" placeholder="内部负责人" />
+          </label>
+        </div>
+
+        <label>
+          其他联系方式
+          <input name="other_contact" maxlength="200" placeholder="机构联系人、备用联系方式等" />
+        </label>
+
+        <div class="form-row">
+          <label>
+            状态
+            <select name="status" required>
+              <option value="正常">正常</option>
+              <option value="停用">停用</option>
+            </select>
+          </label>
+          <label>
+            备注
+            <input name="remark" maxlength="300" placeholder="补充说明" />
+          </label>
+        </div>
+
+        <button class="primary-button submit-button" type="submit">保存达人</button>
+      </form>
+    </dialog>
+
+    <dialog id="project-dialog">
+      <form id="project-form">
+        <input name="id" type="hidden" />
+
+        <div class="dialog-heading">
+          <div>
+            <p id="project-form-eyebrow" class="eyebrow">NEW PROJECT</p>
+            <h2 id="project-form-title">新增项目</h2>
+          </div>
+          <button class="icon-button dialog-close-button" type="button" aria-label="关闭">×</button>
+        </div>
+
+        <label>
+          项目名称 <span>必填</span>
+          <input name="name" required maxlength="80" placeholder="例如：夏季新品种草项目" />
+        </label>
+
+        <div class="form-row">
+          <label>
+            项目编号
+            <input name="project_code" maxlength="50" placeholder="例如：PRJ-2026-SUMMER" />
+          </label>
+          <label>
+            项目状态
+            <select name="status" required>
+              <option value="进行中">进行中</option>
+              <option value="已结束">已结束</option>
+              <option value="归档">归档</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="form-row">
+          <label>
+            负责人
+            <input name="owner" maxlength="40" placeholder="内部负责人" />
+          </label>
+          <label>
+            开始日期
+            <input name="start_date" type="date" />
+          </label>
+        </div>
+
+        <div class="form-row">
+          <label>
+            结束日期
+            <input name="end_date" type="date" />
+          </label>
+          <label>
+            项目说明
+            <input name="description" maxlength="300" placeholder="项目目标、合作背景等" />
+          </label>
+        </div>
+
+        <button class="primary-button submit-button" type="submit">保存项目</button>
+      </form>
+    </dialog>
+
+    <dialog id="content-dialog">
+      <form id="content-form">
+        <input name="id" type="hidden" />
+
+        <div class="dialog-heading">
+          <div>
+            <p id="content-form-eyebrow" class="eyebrow">NEW CONTENT</p>
+            <h2 id="content-form-title">新增内容</h2>
+          </div>
+          <button class="icon-button dialog-close-button" type="button" aria-label="关闭">×</button>
+        </div>
+
+        <label>
+          内容标题 <span>必填</span>
+          <input name="title" required maxlength="120" placeholder="例如：夏季新品开箱测评" />
+        </label>
+
+        <div class="form-row">
+          <label>
+            关联达人 <span>必填</span>
+            <select id="content-influencer-select" name="influencer_id" required></select>
+          </label>
+          <label>
+            关联项目
+            <select id="content-project-select" name="project_id"></select>
+          </label>
+        </div>
+
+        <div class="form-row">
+          <label>
+            内容链接 <span>必填</span>
+            <input name="content_url" required maxlength="500" placeholder="发布后的内容链接" />
+          </label>
+          <label>
+            发布时间 <span>必填</span>
+            <input name="published_at" type="date" required />
+          </label>
+        </div>
+
+        <div class="form-row">
+          <label>
+            内容类型
+            <select name="content_type">
+              <option value="视频">视频</option>
+              <option value="图文">图文</option>
+              <option value="直播切片">直播切片</option>
+              <option value="其他">其他</option>
+            </select>
+          </label>
+          <label>
+            负责人
+            <input name="owner" maxlength="40" placeholder="内容运营负责人" />
+          </label>
+        </div>
+
+        <div class="form-row">
+          <label>
+            播放量
+            <input name="view_count" type="number" min="0" value="0" />
+          </label>
+          <label>
+            点赞
+            <input name="like_count" type="number" min="0" value="0" />
+          </label>
+        </div>
+
+        <div class="form-row">
+          <label>
+            评论
+            <input name="comment_count" type="number" min="0" value="0" />
+          </label>
+          <label>
+            收藏
+            <input name="collect_count" type="number" min="0" value="0" />
+          </label>
+        </div>
+
+        <div class="form-row">
+          <label>
+            转发
+            <input name="share_count" type="number" min="0" value="0" />
+          </label>
+          <label>
+            同步状态
+            <select name="sync_status">
+              <option value="待同步">待同步</option>
+              <option value="同步成功">同步成功</option>
+              <option value="同步失败">同步失败</option>
+              <option value="暂不支持">暂不支持</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="form-row">
+          <label>
+            内容状态
+            <select name="status" required>
+              <option value="正常">正常</option>
+              <option value="作废">作废</option>
+            </select>
+          </label>
+          <label>
+            备注
+            <input name="remark" maxlength="300" placeholder="补充说明" />
+          </label>
+        </div>
+
+        <button class="primary-button submit-button" type="submit">保存内容</button>
+      </form>
+    </dialog>
+
+    <script src="/app.js?v=20260619-dashboard"></script>
+  </body>
+</html>

@@ -1,0 +1,889 @@
+const statsElement = document.querySelector("#stats");
+const messageElement = document.querySelector("#message");
+const openCreateButton = document.querySelector("#open-create-button");
+const detailSection = document.querySelector("#detail-section");
+const detailEyebrow = document.querySelector("#detail-eyebrow");
+const detailTitle = document.querySelector("#detail-title");
+const detailContent = document.querySelector("#detail-content");
+
+const dashboardSection = document.querySelector("#dashboard-section");
+const recentContentList = document.querySelector("#recent-content-list");
+const syncStatusList = document.querySelector("#sync-status-list");
+const platformList = document.querySelector("#platform-list");
+
+const influencerSection = document.querySelector("#influencer-section");
+const influencerListElement = document.querySelector("#influencer-list");
+const influencerResultCountElement = document.querySelector("#influencer-result-count");
+const influencerDialog = document.querySelector("#influencer-dialog");
+const influencerForm = document.querySelector("#influencer-form");
+const influencerFormTitle = document.querySelector("#influencer-form-title");
+const influencerFormEyebrow = document.querySelector("#influencer-form-eyebrow");
+const influencerKeywordInput = document.querySelector("#influencer-keyword-input");
+const platformFilter = document.querySelector("#platform-filter");
+
+const projectSection = document.querySelector("#project-section");
+const projectListElement = document.querySelector("#project-list");
+const projectResultCountElement = document.querySelector("#project-result-count");
+const projectDialog = document.querySelector("#project-dialog");
+const projectForm = document.querySelector("#project-form");
+const projectFormTitle = document.querySelector("#project-form-title");
+const projectFormEyebrow = document.querySelector("#project-form-eyebrow");
+const projectKeywordInput = document.querySelector("#project-keyword-input");
+const projectStatusFilter = document.querySelector("#project-status-filter");
+
+const contentSection = document.querySelector("#content-section");
+const contentListElement = document.querySelector("#content-list");
+const contentResultCountElement = document.querySelector("#content-result-count");
+const contentDialog = document.querySelector("#content-dialog");
+const contentForm = document.querySelector("#content-form");
+const contentFormTitle = document.querySelector("#content-form-title");
+const contentFormEyebrow = document.querySelector("#content-form-eyebrow");
+const contentKeywordInput = document.querySelector("#content-keyword-input");
+const contentPlatformFilter = document.querySelector("#content-platform-filter");
+const contentInfluencerSelect = document.querySelector("#content-influencer-select");
+const contentProjectSelect = document.querySelector("#content-project-select");
+
+let influencers = [];
+let projects = [];
+let contents = [];
+let dashboardSummary = null;
+let activeView = "dashboard";
+let activeDetail = null;
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function formatNumber(value) {
+  return new Intl.NumberFormat("zh-CN").format(Number(value) || 0);
+}
+
+function formatDate(value) {
+  if (!value) {
+    return "-";
+  }
+  return value.replace("T", " ").slice(0, 16);
+}
+
+function getInitials(name) {
+  return String(name || "?").slice(0, 1).toUpperCase();
+}
+
+function getPrimaryContact(item) {
+  return item.wechat || item.phone || item.email || item.other_contact || "-";
+}
+
+function showMessage(text, type = "success") {
+  messageElement.textContent = text;
+  messageElement.className = `message ${type}`;
+  messageElement.hidden = false;
+  window.setTimeout(() => {
+    messageElement.hidden = true;
+  }, 3200);
+}
+
+async function requestJson(url, options = {}) {
+  const response = await fetch(url, options);
+  const result = await response.json();
+  if (!response.ok) {
+    throw new Error(result.message || "请求失败");
+  }
+  return result;
+}
+
+function renderStats() {
+  const totals = dashboardSummary?.totals || {};
+
+  const stats = [
+    ["达人总数", totals.influencer_count || 0, "位"],
+    ["项目总数", totals.project_count || 0, "个"],
+    ["内容总数", totals.content_count || 0, "条"],
+    ["总互动量", formatNumber(totals.total_interactions || 0), "次"],
+  ];
+
+  statsElement.innerHTML = stats
+    .map(
+      ([label, value, unit]) => `
+        <article class="stat-card">
+          <p>${label}</p>
+          <strong>${value}<small>${unit}</small></strong>
+          ${label === "达人总数" ? `<em>${totals.active_influencer_count || 0} 位正常</em>` : ""}
+          ${label === "项目总数" ? `<em>${totals.active_project_count || 0} 个进行中</em>` : ""}
+          ${label === "内容总数" ? `<em>${formatNumber(totals.total_views || 0)} 总播放</em>` : ""}
+        </article>
+      `,
+    )
+    .join("");
+}
+
+function renderDashboard() {
+  renderStats();
+  const summary = dashboardSummary || {
+    recent_contents: [],
+    sync_distribution: [],
+    platform_distribution: [],
+  };
+
+  recentContentList.innerHTML = summary.recent_contents.length
+    ? summary.recent_contents
+        .map(
+          (item) => `
+            <article class="mini-list-item">
+              <div>
+                <strong>${escapeHtml(item.title)}</strong>
+                <span>${escapeHtml(item.influencer_name)} / ${escapeHtml(item.platform)} / ${escapeHtml(item.published_at || "-")}</span>
+              </div>
+              <div class="metric-pair">
+                <span>播放 ${formatNumber(item.view_count)}</span>
+                <span>互动 ${formatNumber(item.interaction_count)}</span>
+              </div>
+            </article>
+          `,
+        )
+        .join("")
+    : `<div class="empty-state compact-empty">暂无内容，去内容库新增第一条吧。</div>`;
+
+  syncStatusList.innerHTML = summary.sync_distribution.length
+    ? summary.sync_distribution
+        .map(
+          (item) => `
+            <div class="summary-row">
+              <span><i class="dot"></i>${escapeHtml(item.sync_status)}</span>
+              <strong>${formatNumber(item.content_count)} 条</strong>
+            </div>
+          `,
+        )
+        .join("")
+    : `<div class="empty-state compact-empty">暂无同步数据</div>`;
+
+  platformList.innerHTML = summary.platform_distribution.length
+    ? summary.platform_distribution
+        .map(
+          (item) => `
+            <div class="summary-row">
+              <span><i class="dot blue-dot"></i>${escapeHtml(item.platform)}</span>
+              <strong>${formatNumber(item.content_count)} 条 / ${formatNumber(item.view_count)} 播放</strong>
+            </div>
+          `,
+        )
+        .join("")
+    : `<div class="empty-state compact-empty">暂无平台数据</div>`;
+}
+
+function switchView(view) {
+  activeView = view;
+  dashboardSection.hidden = view !== "dashboard";
+  influencerSection.hidden = view !== "influencers";
+  projectSection.hidden = view !== "projects";
+  contentSection.hidden = view !== "contents";
+  detailSection.hidden = true;
+  activeDetail = null;
+
+  document.querySelectorAll(".nav a[data-view]").forEach((link) => {
+    link.classList.toggle("active", link.dataset.view === view);
+  });
+
+  if (view === "dashboard") {
+    openCreateButton.textContent = "+ 新增内容";
+    document.querySelector("#hero-label").textContent = "首页概览";
+    document.querySelector("#hero-title").textContent = "一眼看到达人内容运营情况。";
+    document.querySelector("#hero-description").textContent =
+      "这里会汇总达人、项目、内容和数据回收结果，帮助你从运营视角看整体表现。";
+    document.querySelector("#hero-card-title").textContent = "运营看板";
+    loadDashboard();
+    return;
+  }
+
+  if (view === "projects") {
+    openCreateButton.textContent = "+ 新增项目";
+    document.querySelector("#hero-label").textContent = "第二轮开发：项目库";
+    document.querySelector("#hero-title").textContent = "把合作项目也单独管理起来。";
+    document.querySelector("#hero-description").textContent =
+      "项目库会为下一轮“内容关联项目”提前打地基，内容录入时可以选择项目，也可以不选。";
+    document.querySelector("#hero-card-title").textContent = "项目库";
+    loadProjects();
+    return;
+  }
+
+  if (view === "contents") {
+    openCreateButton.textContent = "+ 新增内容";
+    document.querySelector("#hero-label").textContent = "第三轮开发：内容库";
+    document.querySelector("#hero-title").textContent = "把已发布内容和达人、项目关联起来。";
+    document.querySelector("#hero-description").textContent =
+      "内容必须选择达人，项目可选；内容链接唯一，同时记录播放、点赞、评论、收藏、转发。";
+    document.querySelector("#hero-card-title").textContent = "内容库";
+    loadContents();
+    return;
+  }
+
+  openCreateButton.textContent = "+ 新增达人";
+  document.querySelector("#hero-label").textContent = "第一轮开发：达人管理闭环";
+  document.querySelector("#hero-title").textContent = "先把达人从表格里稳定地管起来。";
+  document.querySelector("#hero-description").textContent =
+    "本轮重点是新增、编辑、搜索、筛选、查看详情，并防止同平台重复录入同名达人。";
+  document.querySelector("#hero-card-title").textContent = "达人库";
+  loadInfluencers();
+}
+
+function renderInfluencers() {
+  influencerResultCountElement.textContent = `共 ${influencers.length} 位达人`;
+
+  if (influencers.length === 0) {
+    influencerListElement.innerHTML = `
+      <tr>
+        <td class="empty-state" colspan="9">还没有匹配的达人，可以调整筛选条件或新增达人。</td>
+      </tr>
+    `;
+    renderStats();
+    return;
+  }
+
+  influencerListElement.innerHTML = influencers
+    .map(
+      (item) => `
+        <tr>
+          <td>
+            <div class="creator-cell">
+              <span class="avatar">${escapeHtml(getInitials(item.name))}</span>
+              <div>
+                <strong>${escapeHtml(item.name)}</strong>
+                <small>${escapeHtml(item.account_id || "未填写账号 ID")}</small>
+              </div>
+            </div>
+          </td>
+          <td>${escapeHtml(item.platform)}</td>
+          <td>${escapeHtml(item.category || "-")}</td>
+          <td>${formatNumber(item.followers_count)}</td>
+          <td>${escapeHtml(item.owner || "-")}</td>
+          <td>${escapeHtml(getPrimaryContact(item))}</td>
+          <td><span class="status status-${escapeHtml(item.status)}">${escapeHtml(item.status)}</span></td>
+          <td>${formatDate(item.updated_at)}</td>
+          <td>
+            <div class="table-actions">
+              <button class="link-button" type="button" data-type="influencer" data-action="detail" data-id="${item.id}">详情</button>
+              <button class="link-button" type="button" data-type="influencer" data-action="edit" data-id="${item.id}">编辑</button>
+            </div>
+          </td>
+        </tr>
+      `,
+    )
+    .join("");
+
+  renderStats();
+}
+
+function renderProjects() {
+  projectResultCountElement.textContent = `共 ${projects.length} 个项目`;
+
+  if (projects.length === 0) {
+    projectListElement.innerHTML = `
+      <tr>
+        <td class="empty-state" colspan="8">还没有匹配的项目，可以调整筛选条件或新增项目。</td>
+      </tr>
+    `;
+    renderStats();
+    return;
+  }
+
+  projectListElement.innerHTML = projects
+    .map(
+      (item) => `
+        <tr>
+          <td>
+            <div class="creator-cell">
+              <span class="avatar">${escapeHtml(getInitials(item.name))}</span>
+              <div>
+                <strong>${escapeHtml(item.name)}</strong>
+                <small>${escapeHtml(item.description || "未填写项目说明")}</small>
+              </div>
+            </div>
+          </td>
+          <td>${escapeHtml(item.project_code || "-")}</td>
+          <td><span class="status status-${escapeHtml(item.status)}">${escapeHtml(item.status)}</span></td>
+          <td>${escapeHtml(item.owner || "-")}</td>
+          <td>${escapeHtml(item.start_date || "-")}</td>
+          <td>${escapeHtml(item.end_date || "-")}</td>
+          <td>${formatDate(item.updated_at)}</td>
+          <td>
+            <div class="table-actions">
+              <button class="link-button" type="button" data-type="project" data-action="detail" data-id="${item.id}">详情</button>
+              <button class="link-button" type="button" data-type="project" data-action="edit" data-id="${item.id}">编辑</button>
+            </div>
+          </td>
+        </tr>
+      `,
+    )
+    .join("");
+
+  renderStats();
+}
+
+function renderContents() {
+  contentResultCountElement.textContent = `共 ${contents.length} 条内容`;
+
+  if (contents.length === 0) {
+    contentListElement.innerHTML = `
+      <tr>
+        <td class="empty-state" colspan="9">还没有匹配的内容，可以调整筛选条件或新增内容。</td>
+      </tr>
+    `;
+    renderStats();
+    return;
+  }
+
+  contentListElement.innerHTML = contents
+    .map(
+      (item) => `
+        <tr>
+          <td>
+            <div class="creator-cell">
+              <span class="avatar">${escapeHtml(getInitials(item.title))}</span>
+              <div>
+                <strong>${escapeHtml(item.title)}</strong>
+                <small>${escapeHtml(item.content_type || "未填写类型")}</small>
+              </div>
+            </div>
+          </td>
+          <td>${escapeHtml(item.influencer_name || "-")}</td>
+          <td>${escapeHtml(item.platform || "-")}</td>
+          <td>${escapeHtml(item.project_name || "-")}</td>
+          <td>${escapeHtml(item.published_at || "-")}</td>
+          <td>${formatNumber(item.view_count)}</td>
+          <td>${formatNumber(item.interaction_count)}</td>
+          <td><span class="status status-${escapeHtml(item.sync_status)}">${escapeHtml(item.sync_status || "待同步")}</span></td>
+          <td>
+            <div class="table-actions">
+              <button class="link-button" type="button" data-type="content" data-action="detail" data-id="${item.id}">详情</button>
+              <button class="link-button" type="button" data-type="content" data-action="edit" data-id="${item.id}">编辑</button>
+            </div>
+          </td>
+        </tr>
+      `,
+    )
+    .join("");
+
+  renderStats();
+}
+
+async function loadInfluencers() {
+  try {
+    const params = new URLSearchParams();
+    if (influencerKeywordInput.value.trim()) {
+      params.set("keyword", influencerKeywordInput.value.trim());
+    }
+    if (platformFilter.value) {
+      params.set("platform", platformFilter.value);
+    }
+    const query = params.toString() ? `?${params.toString()}` : "";
+    influencers = await requestJson(`/api/influencers${query}`);
+    renderInfluencers();
+  } catch (error) {
+    influencerResultCountElement.textContent = "加载失败";
+    showMessage(error.message, "error");
+  }
+}
+
+async function loadDashboard() {
+  try {
+    dashboardSummary = await requestJson("/api/dashboard/summary");
+    renderDashboard();
+  } catch (error) {
+    showMessage(error.message, "error");
+  }
+}
+
+async function loadProjects() {
+  try {
+    const params = new URLSearchParams();
+    if (projectKeywordInput.value.trim()) {
+      params.set("keyword", projectKeywordInput.value.trim());
+    }
+    if (projectStatusFilter.value) {
+      params.set("status", projectStatusFilter.value);
+    }
+    const query = params.toString() ? `?${params.toString()}` : "";
+    projects = await requestJson(`/api/projects${query}`);
+    renderProjects();
+  } catch (error) {
+    projectResultCountElement.textContent = "加载失败";
+    showMessage(error.message, "error");
+  }
+}
+
+async function loadContents() {
+  try {
+    const params = new URLSearchParams();
+    if (contentKeywordInput.value.trim()) {
+      params.set("keyword", contentKeywordInput.value.trim());
+    }
+    if (contentPlatformFilter.value) {
+      params.set("platform", contentPlatformFilter.value);
+    }
+    const query = params.toString() ? `?${params.toString()}` : "";
+    contents = await requestJson(`/api/contents${query}`);
+    renderContents();
+  } catch (error) {
+    contentResultCountElement.textContent = "加载失败";
+    showMessage(error.message, "error");
+  }
+}
+
+async function loadInfluencerDetail(id) {
+  const item = await requestJson(`/api/influencers/${id}`);
+  activeDetail = { type: "influencer", id: item.id };
+  detailEyebrow.textContent = "INFLUENCER DETAIL";
+  detailTitle.textContent = item.name;
+  detailContent.innerHTML = `
+    ${renderDetailItem("达人名称", item.name)}
+    ${renderDetailItem("媒体平台", item.platform)}
+    ${renderDetailItem("平台账号 ID", item.account_id)}
+    ${renderDetailItem("主页链接", item.profile_url, true)}
+    ${renderDetailItem("达人分类", item.category)}
+    ${renderDetailItem("粉丝数", formatNumber(item.followers_count))}
+    ${renderDetailItem("微信", item.wechat)}
+    ${renderDetailItem("手机号", item.phone)}
+    ${renderDetailItem("邮箱", item.email)}
+    ${renderDetailItem("其他联系方式", item.other_contact)}
+    ${renderDetailItem("负责人", item.owner)}
+    ${renderDetailItem("状态", item.status)}
+    ${renderDetailItem("备注", item.remark)}
+    ${renderDetailItem("创建时间", formatDate(item.created_at))}
+    ${renderDetailItem("更新时间", formatDate(item.updated_at))}
+  `;
+  detailSection.hidden = false;
+  detailSection.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function loadProjectDetail(id) {
+  const item = await requestJson(`/api/projects/${id}`);
+  activeDetail = { type: "project", id: item.id };
+  detailEyebrow.textContent = "PROJECT DETAIL";
+  detailTitle.textContent = item.name;
+  detailContent.innerHTML = `
+    ${renderDetailItem("项目名称", item.name)}
+    ${renderDetailItem("项目编号", item.project_code)}
+    ${renderDetailItem("项目状态", item.status)}
+    ${renderDetailItem("负责人", item.owner)}
+    ${renderDetailItem("开始日期", item.start_date)}
+    ${renderDetailItem("结束日期", item.end_date)}
+    ${renderDetailItem("项目说明", item.description)}
+    ${renderDetailItem("创建时间", formatDate(item.created_at))}
+    ${renderDetailItem("更新时间", formatDate(item.updated_at))}
+  `;
+  detailSection.hidden = false;
+  detailSection.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+async function loadContentDetail(id) {
+  const item = await requestJson(`/api/contents/${id}`);
+  activeDetail = { type: "content", id: item.id };
+  detailEyebrow.textContent = "CONTENT DETAIL";
+  detailTitle.textContent = item.title;
+  detailContent.innerHTML = `
+    ${renderDetailItem("内容标题", item.title)}
+    ${renderDetailItem("关联达人", item.influencer_name)}
+    ${renderDetailItem("关联项目", item.project_name)}
+    ${renderDetailItem("媒体平台", item.platform)}
+    ${renderDetailItem("内容链接", item.content_url, true)}
+    ${renderDetailItem("标准链接", item.canonical_url, true)}
+    ${renderDetailItem("平台内容 ID", item.platform_content_id)}
+    ${renderDetailItem("发布时间", item.published_at)}
+    ${renderDetailItem("内容类型", item.content_type)}
+    ${renderDetailItem("负责人", item.owner)}
+    ${renderDetailItem("播放量", formatNumber(item.view_count))}
+    ${renderDetailItem("点赞", formatNumber(item.like_count))}
+    ${renderDetailItem("评论", formatNumber(item.comment_count))}
+    ${renderDetailItem("收藏", formatNumber(item.collect_count))}
+    ${renderDetailItem("转发", formatNumber(item.share_count))}
+    ${renderDetailItem("互动量", formatNumber(item.interaction_count))}
+    ${renderDetailItem("同步状态", item.sync_status)}
+    ${renderDetailItem("备注", item.remark)}
+  `;
+  detailSection.hidden = false;
+  detailSection.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function renderDetailItem(label, value, isLink = false) {
+  const displayValue = value || "-";
+  const safeValue = escapeHtml(displayValue);
+  const content =
+    isLink && value
+      ? `<a href="${safeValue}" target="_blank" rel="noreferrer">${safeValue}</a>`
+      : safeValue;
+  return `
+    <article class="detail-item">
+      <span>${label}</span>
+      <strong>${content}</strong>
+    </article>
+  `;
+}
+
+function renderContentSelectOptions() {
+  contentInfluencerSelect.innerHTML = `
+    <option value="">请选择达人</option>
+    ${influencers
+      .map(
+        (item) =>
+          `<option value="${item.id}">${escapeHtml(item.name)} / ${escapeHtml(item.platform)}</option>`,
+      )
+      .join("")}
+  `;
+
+  contentProjectSelect.innerHTML = `
+    <option value="">不关联项目</option>
+    ${projects
+      .map(
+        (item) =>
+          `<option value="${item.id}">${escapeHtml(item.name)}</option>`,
+      )
+      .join("")}
+  `;
+}
+
+function openCreateDialog() {
+  if (activeView === "contents" || activeView === "dashboard") {
+    renderContentSelectOptions();
+    contentForm.reset();
+    contentForm.elements.id.value = "";
+    contentForm.elements.status.value = "正常";
+    contentForm.elements.content_type.value = "视频";
+    contentForm.elements.sync_status.value = "待同步";
+    ["view_count", "like_count", "comment_count", "collect_count", "share_count"].forEach((key) => {
+      contentForm.elements[key].value = 0;
+    });
+    contentFormTitle.textContent = "新增内容";
+    contentFormEyebrow.textContent = "NEW CONTENT";
+    contentForm.querySelector(".submit-button").textContent = "保存内容";
+    contentDialog.showModal();
+    return;
+  }
+
+  if (activeView === "projects") {
+    projectForm.reset();
+    projectForm.elements.id.value = "";
+    projectForm.elements.status.value = "进行中";
+    projectFormTitle.textContent = "新增项目";
+    projectFormEyebrow.textContent = "NEW PROJECT";
+    projectForm.querySelector(".submit-button").textContent = "保存项目";
+    projectDialog.showModal();
+    return;
+  }
+
+  influencerForm.reset();
+  influencerForm.elements.id.value = "";
+  influencerForm.elements.status.value = "正常";
+  influencerForm.elements.followers_count.value = 0;
+  influencerFormTitle.textContent = "新增达人";
+  influencerFormEyebrow.textContent = "NEW INFLUENCER";
+  influencerForm.querySelector(".submit-button").textContent = "保存达人";
+  influencerDialog.showModal();
+}
+
+async function openInfluencerEditDialog(id) {
+  try {
+    const item = await requestJson(`/api/influencers/${id}`);
+    influencerForm.reset();
+    Object.entries(item).forEach(([key, value]) => {
+      if (influencerForm.elements[key]) {
+        influencerForm.elements[key].value = value ?? "";
+      }
+    });
+    influencerFormTitle.textContent = "编辑达人";
+    influencerFormEyebrow.textContent = "EDIT INFLUENCER";
+    influencerForm.querySelector(".submit-button").textContent = "保存修改";
+    influencerDialog.showModal();
+  } catch (error) {
+    showMessage(error.message, "error");
+  }
+}
+
+async function openProjectEditDialog(id) {
+  try {
+    const item = await requestJson(`/api/projects/${id}`);
+    projectForm.reset();
+    Object.entries(item).forEach(([key, value]) => {
+      if (projectForm.elements[key]) {
+        projectForm.elements[key].value = value ?? "";
+      }
+    });
+    projectFormTitle.textContent = "编辑项目";
+    projectFormEyebrow.textContent = "EDIT PROJECT";
+    projectForm.querySelector(".submit-button").textContent = "保存修改";
+    projectDialog.showModal();
+  } catch (error) {
+    showMessage(error.message, "error");
+  }
+}
+
+async function openContentEditDialog(id) {
+  try {
+    await Promise.all([loadInfluencers(), loadProjects()]);
+    renderContentSelectOptions();
+    const item = await requestJson(`/api/contents/${id}`);
+    contentForm.reset();
+    Object.entries(item).forEach(([key, value]) => {
+      if (contentForm.elements[key]) {
+        contentForm.elements[key].value = value ?? "";
+      }
+    });
+    contentFormTitle.textContent = "编辑内容";
+    contentFormEyebrow.textContent = "EDIT CONTENT";
+    contentForm.querySelector(".submit-button").textContent = "保存修改";
+    contentDialog.showModal();
+  } catch (error) {
+    showMessage(error.message, "error");
+  }
+}
+
+function getInfluencerPayload() {
+  const formData = new FormData(influencerForm);
+  const payload = Object.fromEntries(formData.entries());
+  payload.followers_count = Number(payload.followers_count || 0);
+  return payload;
+}
+
+function getProjectPayload() {
+  const formData = new FormData(projectForm);
+  return Object.fromEntries(formData.entries());
+}
+
+function getContentPayload() {
+  const formData = new FormData(contentForm);
+  const payload = Object.fromEntries(formData.entries());
+  ["view_count", "like_count", "comment_count", "collect_count", "share_count"].forEach((key) => {
+    payload[key] = Number(payload[key] || 0);
+  });
+  return payload;
+}
+
+document.querySelectorAll(".nav a[data-view]").forEach((link) => {
+  link.addEventListener("click", (event) => {
+    event.preventDefault();
+    switchView(link.dataset.view);
+  });
+});
+
+openCreateButton.addEventListener("click", openCreateDialog);
+
+document.querySelectorAll(".dialog-close-button").forEach((button) => {
+  button.addEventListener("click", () => {
+    influencerDialog.close();
+    projectDialog.close();
+    contentDialog.close();
+  });
+});
+
+[influencerDialog, projectDialog, contentDialog].forEach((dialog) => {
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) {
+      dialog.close();
+    }
+  });
+});
+
+document.querySelector("#close-detail-button").addEventListener("click", () => {
+  activeDetail = null;
+  detailSection.hidden = true;
+});
+
+document.querySelector("#reset-influencer-filter-button").addEventListener("click", () => {
+  influencerKeywordInput.value = "";
+  platformFilter.value = "";
+  loadInfluencers();
+});
+
+document.querySelector("#reset-project-filter-button").addEventListener("click", () => {
+  projectKeywordInput.value = "";
+  projectStatusFilter.value = "";
+  loadProjects();
+});
+
+document.querySelector("#reset-content-filter-button").addEventListener("click", () => {
+  contentKeywordInput.value = "";
+  contentPlatformFilter.value = "";
+  loadContents();
+});
+
+influencerKeywordInput.addEventListener("input", () => {
+  window.clearTimeout(influencerKeywordInput.searchTimer);
+  influencerKeywordInput.searchTimer = window.setTimeout(loadInfluencers, 250);
+});
+
+projectKeywordInput.addEventListener("input", () => {
+  window.clearTimeout(projectKeywordInput.searchTimer);
+  projectKeywordInput.searchTimer = window.setTimeout(loadProjects, 250);
+});
+
+contentKeywordInput.addEventListener("input", () => {
+  window.clearTimeout(contentKeywordInput.searchTimer);
+  contentKeywordInput.searchTimer = window.setTimeout(loadContents, 250);
+});
+
+platformFilter.addEventListener("change", loadInfluencers);
+projectStatusFilter.addEventListener("change", loadProjects);
+contentPlatformFilter.addEventListener("change", loadContents);
+
+influencerListElement.addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-action]");
+  if (!button) {
+    return;
+  }
+
+  const id = button.dataset.id;
+  if (button.dataset.action === "detail") {
+    try {
+      await loadInfluencerDetail(id);
+    } catch (error) {
+      showMessage(error.message, "error");
+    }
+  }
+  if (button.dataset.action === "edit") {
+    await openInfluencerEditDialog(id);
+  }
+});
+
+projectListElement.addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-action]");
+  if (!button) {
+    return;
+  }
+
+  const id = button.dataset.id;
+  if (button.dataset.action === "detail") {
+    try {
+      await loadProjectDetail(id);
+    } catch (error) {
+      showMessage(error.message, "error");
+    }
+  }
+  if (button.dataset.action === "edit") {
+    await openProjectEditDialog(id);
+  }
+});
+
+contentListElement.addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-action]");
+  if (!button) {
+    return;
+  }
+
+  const id = button.dataset.id;
+  if (button.dataset.action === "detail") {
+    try {
+      await loadContentDetail(id);
+    } catch (error) {
+      showMessage(error.message, "error");
+    }
+  }
+  if (button.dataset.action === "edit") {
+    await openContentEditDialog(id);
+  }
+});
+
+influencerForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const submitButton = influencerForm.querySelector('button[type="submit"]');
+  const payload = getInfluencerPayload();
+  const isEdit = Boolean(payload.id);
+  const url = isEdit ? `/api/influencers/${payload.id}` : "/api/influencers";
+  const method = isEdit ? "PUT" : "POST";
+
+  submitButton.disabled = true;
+  submitButton.textContent = "保存中...";
+
+  try {
+    const result = await requestJson(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    await loadInfluencers();
+    await loadDashboard();
+    if (activeDetail?.type === "influencer" && activeDetail.id === result.id) {
+      await loadInfluencerDetail(result.id);
+    }
+    influencerDialog.close();
+    showMessage(isEdit ? `已更新达人：${result.name}` : `已添加达人：${result.name}`);
+  } catch (error) {
+    showMessage(error.message, "error");
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = isEdit ? "保存修改" : "保存达人";
+  }
+});
+
+projectForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const submitButton = projectForm.querySelector('button[type="submit"]');
+  const payload = getProjectPayload();
+  const isEdit = Boolean(payload.id);
+  const url = isEdit ? `/api/projects/${payload.id}` : "/api/projects";
+  const method = isEdit ? "PUT" : "POST";
+
+  submitButton.disabled = true;
+  submitButton.textContent = "保存中...";
+
+  try {
+    const result = await requestJson(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    await loadProjects();
+    await loadDashboard();
+    if (activeDetail?.type === "project" && activeDetail.id === result.id) {
+      await loadProjectDetail(result.id);
+    }
+    projectDialog.close();
+    showMessage(isEdit ? `已更新项目：${result.name}` : `已添加项目：${result.name}`);
+  } catch (error) {
+    showMessage(error.message, "error");
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = isEdit ? "保存修改" : "保存项目";
+  }
+});
+
+contentForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const submitButton = contentForm.querySelector('button[type="submit"]');
+  const payload = getContentPayload();
+  const isEdit = Boolean(payload.id);
+  const url = isEdit ? `/api/contents/${payload.id}` : "/api/contents";
+  const method = isEdit ? "PUT" : "POST";
+
+  submitButton.disabled = true;
+  submitButton.textContent = "保存中...";
+
+  try {
+    const result = await requestJson(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    await loadContents();
+    await loadDashboard();
+    if (activeDetail?.type === "content" && activeDetail.id === result.id) {
+      await loadContentDetail(result.id);
+    }
+    contentDialog.close();
+    showMessage(isEdit ? `已更新内容：${result.title}` : `已添加内容：${result.title}`);
+  } catch (error) {
+    showMessage(error.message, "error");
+  } finally {
+    submitButton.disabled = false;
+    submitButton.textContent = isEdit ? "保存修改" : "保存内容";
+  }
+});
+
+Promise.all([loadInfluencers(), loadProjects(), loadContents(), loadDashboard()]).then(() => {
+  switchView("dashboard");
+});
