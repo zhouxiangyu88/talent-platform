@@ -87,6 +87,24 @@ DATABASE_PATH=/var/data/talent_platform.db
 - 不要把正式邀请码写进 GitHub。
 - 第一次上线后，先用邀请码注册自己的账号，再把链接发给其他人。
 
+## 免费部署方案：PythonAnywhere
+
+如果没有海外卡，可以优先使用 PythonAnywhere 免费方案。
+
+项目已新增：
+
+```text
+wsgi.py
+```
+
+用于适配 PythonAnywhere 的 WSGI Web App。
+
+详细步骤见：
+
+```text
+docs/11-PythonAnywhere免费部署说明-V1.2.md
+```
+
 ## 项目结构
 
 ```text
