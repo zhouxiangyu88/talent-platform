@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>达人运营平台</title>
-    <link rel="stylesheet" href="/styles.css?v=20260619-dashboard" />
+    <link rel="stylesheet" href="/styles.css?v=20260623-sync" />
   </head>
   <body>
     <aside class="sidebar">
@@ -32,21 +32,6 @@
         </div>
         <button id="open-create-button" class="primary-button">+ 新增达人</button>
       </header>
-
-      <section class="hero">
-        <div>
-          <p id="hero-label" class="hero-label">第二轮开发：项目库</p>
-          <h2 id="hero-title">把合作项目也单独管理起来。</h2>
-          <p id="hero-description" class="hero-description">
-            项目库会为下一轮“内容关联项目”提前打地基，内容录入时可以选择项目，也可以不选。
-          </p>
-        </div>
-        <div class="hero-card">
-          <span>V1</span>
-          <strong id="hero-card-title">达人 + 项目</strong>
-          <small>前端 + 后端 + 数据库继续扩展</small>
-        </div>
-      </section>
 
       <section id="stats" class="stats" aria-label="数据概览"></section>
 
@@ -109,6 +94,21 @@
               <option value="微博">微博</option>
             </select>
           </label>
+          <label>
+            达人分类
+            <input id="influencer-category-filter" type="search" placeholder="例如：美妆" />
+          </label>
+          <label>
+            负责人
+            <input id="influencer-owner-filter" type="search" placeholder="输入负责人" />
+          </label>
+          <label class="range-filter">
+            粉丝数区间
+            <span class="range-inputs">
+              <input id="followers-min-filter" type="number" min="0" placeholder="最小" />
+              <input id="followers-max-filter" type="number" min="0" placeholder="最大" />
+            </span>
+          </label>
           <button id="reset-influencer-filter-button" class="secondary-button" type="button">重置</button>
         </div>
 
@@ -154,6 +154,10 @@
               <option value="已结束">已结束</option>
               <option value="归档">归档</option>
             </select>
+          </label>
+          <label>
+            负责人
+            <input id="project-owner-filter" type="search" placeholder="输入负责人" />
           </label>
           <button id="reset-project-filter-button" class="secondary-button" type="button">重置</button>
         </div>
@@ -201,6 +205,26 @@
               <option value="视频号">视频号</option>
               <option value="微博">微博</option>
             </select>
+          </label>
+          <label>
+            关联项目
+            <select id="content-project-filter">
+              <option value="">全部项目</option>
+            </select>
+          </label>
+          <label class="range-filter">
+            播放量区间
+            <span class="range-inputs">
+              <input id="views-min-filter" type="number" min="0" placeholder="最小" />
+              <input id="views-max-filter" type="number" min="0" placeholder="最大" />
+            </span>
+          </label>
+          <label class="range-filter">
+            互动量区间
+            <span class="range-inputs">
+              <input id="interactions-min-filter" type="number" min="0" placeholder="最小" />
+              <input id="interactions-max-filter" type="number" min="0" placeholder="最大" />
+            </span>
           </label>
           <button id="reset-content-filter-button" class="secondary-button" type="button">重置</button>
         </div>
@@ -502,6 +526,6 @@
       </form>
     </dialog>
 
-    <script src="/app.js?v=20260619-dashboard"></script>
+    <script src="/app.js?v=20260623-sync"></script>
   </body>
 </html>

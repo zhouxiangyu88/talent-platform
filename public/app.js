@@ -20,6 +20,10 @@ const influencerFormTitle = document.querySelector("#influencer-form-title");
 const influencerFormEyebrow = document.querySelector("#influencer-form-eyebrow");
 const influencerKeywordInput = document.querySelector("#influencer-keyword-input");
 const platformFilter = document.querySelector("#platform-filter");
+const influencerCategoryFilter = document.querySelector("#influencer-category-filter");
+const influencerOwnerFilter = document.querySelector("#influencer-owner-filter");
+const followersMinFilter = document.querySelector("#followers-min-filter");
+const followersMaxFilter = document.querySelector("#followers-max-filter");
 
 const projectSection = document.querySelector("#project-section");
 const projectListElement = document.querySelector("#project-list");
@@ -30,6 +34,7 @@ const projectFormTitle = document.querySelector("#project-form-title");
 const projectFormEyebrow = document.querySelector("#project-form-eyebrow");
 const projectKeywordInput = document.querySelector("#project-keyword-input");
 const projectStatusFilter = document.querySelector("#project-status-filter");
+const projectOwnerFilter = document.querySelector("#project-owner-filter");
 
 const contentSection = document.querySelector("#content-section");
 const contentListElement = document.querySelector("#content-list");
@@ -40,6 +45,11 @@ const contentFormTitle = document.querySelector("#content-form-title");
 const contentFormEyebrow = document.querySelector("#content-form-eyebrow");
 const contentKeywordInput = document.querySelector("#content-keyword-input");
 const contentPlatformFilter = document.querySelector("#content-platform-filter");
+const contentProjectFilter = document.querySelector("#content-project-filter");
+const viewsMinFilter = document.querySelector("#views-min-filter");
+const viewsMaxFilter = document.querySelector("#views-max-filter");
+const interactionsMinFilter = document.querySelector("#interactions-min-filter");
+const interactionsMaxFilter = document.querySelector("#interactions-max-filter");
 const contentInfluencerSelect = document.querySelector("#content-influencer-select");
 const contentProjectSelect = document.querySelector("#content-project-select");
 
@@ -49,6 +59,7 @@ let contents = [];
 let dashboardSummary = null;
 let activeView = "dashboard";
 let activeDetail = null;
+const validViews = new Set(["dashboard", "influencers", "projects", "contents"]);
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -76,6 +87,35 @@ function getInitials(name) {
 
 function getPrimaryContact(item) {
   return item.wechat || item.phone || item.email || item.other_contact || "-";
+}
+
+function setTextParam(params, key, element) {
+  const value = element.value.trim();
+  if (value) {
+    params.set(key, value);
+  }
+}
+
+function setNumberParam(params, key, element) {
+  const value = element.value.trim();
+  if (value !== "") {
+    params.set(key, value);
+  }
+}
+
+function renderExternalLink(text, url) {
+  const safeText = escapeHtml(text || "-");
+  const rawUrl = String(url || "").trim();
+  if (!rawUrl) {
+    return safeText;
+  }
+
+  const href = rawUrl.startsWith("www.") ? `https://${rawUrl}` : rawUrl;
+  if (!/^https?:\/\//i.test(href)) {
+    return safeText;
+  }
+
+  return `<a class="external-text-link" href="${escapeHtml(href)}" target="_blank" rel="noreferrer">${safeText}</a>`;
 }
 
 function showMessage(text, type = "success") {
@@ -175,12 +215,27 @@ function renderDashboard() {
     : `<div class="empty-state compact-empty">暂无平台数据</div>`;
 }
 
-function switchView(view) {
+function getViewFromHash() {
+  const view = window.location.hash.replace("#", "");
+  return validViews.has(view) ? view : "dashboard";
+}
+
+function switchView(view, shouldUpdateHash = true) {
+  if (!validViews.has(view)) {
+    view = "dashboard";
+  }
+
+  if (shouldUpdateHash && window.location.hash !== `#${view}`) {
+    window.location.hash = view;
+  }
+
   activeView = view;
   dashboardSection.hidden = view !== "dashboard";
   influencerSection.hidden = view !== "influencers";
   projectSection.hidden = view !== "projects";
   contentSection.hidden = view !== "contents";
+  statsElement.hidden = view !== "dashboard";
+  openCreateButton.hidden = view === "dashboard";
   detailSection.hidden = true;
   activeDetail = null;
 
@@ -189,44 +244,24 @@ function switchView(view) {
   });
 
   if (view === "dashboard") {
-    openCreateButton.textContent = "+ 新增内容";
-    document.querySelector("#hero-label").textContent = "首页概览";
-    document.querySelector("#hero-title").textContent = "一眼看到达人内容运营情况。";
-    document.querySelector("#hero-description").textContent =
-      "这里会汇总达人、项目、内容和数据回收结果，帮助你从运营视角看整体表现。";
-    document.querySelector("#hero-card-title").textContent = "运营看板";
     loadDashboard();
     return;
   }
 
   if (view === "projects") {
     openCreateButton.textContent = "+ 新增项目";
-    document.querySelector("#hero-label").textContent = "第二轮开发：项目库";
-    document.querySelector("#hero-title").textContent = "把合作项目也单独管理起来。";
-    document.querySelector("#hero-description").textContent =
-      "项目库会为下一轮“内容关联项目”提前打地基，内容录入时可以选择项目，也可以不选。";
-    document.querySelector("#hero-card-title").textContent = "项目库";
     loadProjects();
     return;
   }
 
   if (view === "contents") {
     openCreateButton.textContent = "+ 新增内容";
-    document.querySelector("#hero-label").textContent = "第三轮开发：内容库";
-    document.querySelector("#hero-title").textContent = "把已发布内容和达人、项目关联起来。";
-    document.querySelector("#hero-description").textContent =
-      "内容必须选择达人，项目可选；内容链接唯一，同时记录播放、点赞、评论、收藏、转发。";
-    document.querySelector("#hero-card-title").textContent = "内容库";
+    loadProjectOptions();
     loadContents();
     return;
   }
 
   openCreateButton.textContent = "+ 新增达人";
-  document.querySelector("#hero-label").textContent = "第一轮开发：达人管理闭环";
-  document.querySelector("#hero-title").textContent = "先把达人从表格里稳定地管起来。";
-  document.querySelector("#hero-description").textContent =
-    "本轮重点是新增、编辑、搜索、筛选、查看详情，并防止同平台重复录入同名达人。";
-  document.querySelector("#hero-card-title").textContent = "达人库";
   loadInfluencers();
 }
 
@@ -251,7 +286,7 @@ function renderInfluencers() {
             <div class="creator-cell">
               <span class="avatar">${escapeHtml(getInitials(item.name))}</span>
               <div>
-                <strong>${escapeHtml(item.name)}</strong>
+                <strong>${renderExternalLink(item.name, item.profile_url)}</strong>
                 <small>${escapeHtml(item.account_id || "未填写账号 ID")}</small>
               </div>
             </div>
@@ -344,7 +379,7 @@ function renderContents() {
             <div class="creator-cell">
               <span class="avatar">${escapeHtml(getInitials(item.title))}</span>
               <div>
-                <strong>${escapeHtml(item.title)}</strong>
+                <strong>${renderExternalLink(item.title, item.content_url)}</strong>
                 <small>${escapeHtml(item.content_type || "未填写类型")}</small>
               </div>
             </div>
@@ -360,6 +395,7 @@ function renderContents() {
             <div class="table-actions">
               <button class="link-button" type="button" data-type="content" data-action="detail" data-id="${item.id}">详情</button>
               <button class="link-button" type="button" data-type="content" data-action="edit" data-id="${item.id}">编辑</button>
+              <button class="link-button" type="button" data-type="content" data-action="sync" data-id="${item.id}">同步数据</button>
             </div>
           </td>
         </tr>
@@ -373,12 +409,14 @@ function renderContents() {
 async function loadInfluencers() {
   try {
     const params = new URLSearchParams();
-    if (influencerKeywordInput.value.trim()) {
-      params.set("keyword", influencerKeywordInput.value.trim());
-    }
+    setTextParam(params, "keyword", influencerKeywordInput);
     if (platformFilter.value) {
       params.set("platform", platformFilter.value);
     }
+    setTextParam(params, "category", influencerCategoryFilter);
+    setTextParam(params, "owner", influencerOwnerFilter);
+    setNumberParam(params, "followers_min", followersMinFilter);
+    setNumberParam(params, "followers_max", followersMaxFilter);
     const query = params.toString() ? `?${params.toString()}` : "";
     influencers = await requestJson(`/api/influencers${query}`);
     renderInfluencers();
@@ -400,12 +438,11 @@ async function loadDashboard() {
 async function loadProjects() {
   try {
     const params = new URLSearchParams();
-    if (projectKeywordInput.value.trim()) {
-      params.set("keyword", projectKeywordInput.value.trim());
-    }
+    setTextParam(params, "keyword", projectKeywordInput);
     if (projectStatusFilter.value) {
       params.set("status", projectStatusFilter.value);
     }
+    setTextParam(params, "owner", projectOwnerFilter);
     const query = params.toString() ? `?${params.toString()}` : "";
     projects = await requestJson(`/api/projects${query}`);
     renderProjects();
@@ -415,15 +452,29 @@ async function loadProjects() {
   }
 }
 
+async function loadProjectOptions() {
+  try {
+    projects = await requestJson("/api/projects");
+    renderProjectOptions();
+  } catch (error) {
+    showMessage(error.message, "error");
+  }
+}
+
 async function loadContents() {
   try {
     const params = new URLSearchParams();
-    if (contentKeywordInput.value.trim()) {
-      params.set("keyword", contentKeywordInput.value.trim());
-    }
+    setTextParam(params, "keyword", contentKeywordInput);
     if (contentPlatformFilter.value) {
       params.set("platform", contentPlatformFilter.value);
     }
+    if (contentProjectFilter.value) {
+      params.set("project_id", contentProjectFilter.value);
+    }
+    setNumberParam(params, "views_min", viewsMinFilter);
+    setNumberParam(params, "views_max", viewsMaxFilter);
+    setNumberParam(params, "interactions_min", interactionsMinFilter);
+    setNumberParam(params, "interactions_max", interactionsMaxFilter);
     const query = params.toString() ? `?${params.toString()}` : "";
     contents = await requestJson(`/api/contents${query}`);
     renderContents();
@@ -502,6 +553,7 @@ async function loadContentDetail(id) {
     ${renderDetailItem("转发", formatNumber(item.share_count))}
     ${renderDetailItem("互动量", formatNumber(item.interaction_count))}
     ${renderDetailItem("同步状态", item.sync_status)}
+    ${renderDetailItem("失败原因", item.failed_reason)}
     ${renderDetailItem("备注", item.remark)}
   `;
   detailSection.hidden = false;
@@ -534,14 +586,25 @@ function renderContentSelectOptions() {
       .join("")}
   `;
 
+  renderProjectOptions();
+}
+
+function renderProjectOptions() {
+  const projectOptions = projects
+    .map(
+      (item) =>
+        `<option value="${item.id}">${escapeHtml(item.name)}</option>`,
+    )
+    .join("");
+
   contentProjectSelect.innerHTML = `
     <option value="">不关联项目</option>
-    ${projects
-      .map(
-        (item) =>
-          `<option value="${item.id}">${escapeHtml(item.name)}</option>`,
-      )
-      .join("")}
+    ${projectOptions}
+  `;
+  contentProjectFilter.innerHTML = `
+    <option value="">全部项目</option>
+    <option value="none">未关联项目</option>
+    ${projectOptions}
   `;
 }
 
@@ -640,6 +703,30 @@ async function openContentEditDialog(id) {
   }
 }
 
+async function syncContentData(id, button) {
+  const originalText = button.textContent;
+  button.disabled = true;
+  button.textContent = "同步中...";
+
+  try {
+    const result = await requestJson(`/api/contents/${id}/sync`, {
+      method: "POST",
+    });
+    await loadContents();
+    await loadDashboard();
+    if (activeDetail?.type === "content" && activeDetail.id === Number(id)) {
+      await loadContentDetail(id);
+    }
+    showMessage(result.message || "同步成功");
+  } catch (error) {
+    await loadContents();
+    showMessage(`同步失败：${error.message}`, "error");
+  } finally {
+    button.disabled = false;
+    button.textContent = originalText;
+  }
+}
+
 function getInfluencerPayload() {
   const formData = new FormData(influencerForm);
   const payload = Object.fromEntries(formData.entries());
@@ -668,6 +755,10 @@ document.querySelectorAll(".nav a[data-view]").forEach((link) => {
   });
 });
 
+window.addEventListener("hashchange", () => {
+  switchView(getViewFromHash(), false);
+});
+
 openCreateButton.addEventListener("click", openCreateDialog);
 
 document.querySelectorAll(".dialog-close-button").forEach((button) => {
@@ -694,18 +785,28 @@ document.querySelector("#close-detail-button").addEventListener("click", () => {
 document.querySelector("#reset-influencer-filter-button").addEventListener("click", () => {
   influencerKeywordInput.value = "";
   platformFilter.value = "";
+  influencerCategoryFilter.value = "";
+  influencerOwnerFilter.value = "";
+  followersMinFilter.value = "";
+  followersMaxFilter.value = "";
   loadInfluencers();
 });
 
 document.querySelector("#reset-project-filter-button").addEventListener("click", () => {
   projectKeywordInput.value = "";
   projectStatusFilter.value = "";
+  projectOwnerFilter.value = "";
   loadProjects();
 });
 
 document.querySelector("#reset-content-filter-button").addEventListener("click", () => {
   contentKeywordInput.value = "";
   contentPlatformFilter.value = "";
+  contentProjectFilter.value = "";
+  viewsMinFilter.value = "";
+  viewsMaxFilter.value = "";
+  interactionsMinFilter.value = "";
+  interactionsMaxFilter.value = "";
   loadContents();
 });
 
@@ -724,9 +825,39 @@ contentKeywordInput.addEventListener("input", () => {
   contentKeywordInput.searchTimer = window.setTimeout(loadContents, 250);
 });
 
+[
+  influencerCategoryFilter,
+  influencerOwnerFilter,
+  followersMinFilter,
+  followersMaxFilter,
+].forEach((element) => {
+  element.addEventListener("input", () => {
+    window.clearTimeout(element.searchTimer);
+    element.searchTimer = window.setTimeout(loadInfluencers, 250);
+  });
+});
+
+projectOwnerFilter.addEventListener("input", () => {
+  window.clearTimeout(projectOwnerFilter.searchTimer);
+  projectOwnerFilter.searchTimer = window.setTimeout(loadProjects, 250);
+});
+
+[
+  viewsMinFilter,
+  viewsMaxFilter,
+  interactionsMinFilter,
+  interactionsMaxFilter,
+].forEach((element) => {
+  element.addEventListener("input", () => {
+    window.clearTimeout(element.searchTimer);
+    element.searchTimer = window.setTimeout(loadContents, 250);
+  });
+});
+
 platformFilter.addEventListener("change", loadInfluencers);
 projectStatusFilter.addEventListener("change", loadProjects);
 contentPlatformFilter.addEventListener("change", loadContents);
+contentProjectFilter.addEventListener("change", loadContents);
 
 influencerListElement.addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-action]");
@@ -782,6 +913,9 @@ contentListElement.addEventListener("click", async (event) => {
   }
   if (button.dataset.action === "edit") {
     await openContentEditDialog(id);
+  }
+  if (button.dataset.action === "sync") {
+    await syncContentData(id, button);
   }
 });
 
@@ -884,6 +1018,4 @@ contentForm.addEventListener("submit", async (event) => {
   }
 });
 
-Promise.all([loadInfluencers(), loadProjects(), loadContents(), loadDashboard()]).then(() => {
-  switchView("dashboard");
-});
+switchView(getViewFromHash(), false);

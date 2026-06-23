@@ -1,9 +1,11 @@
 import json
+import re
 import sqlite3
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse, urlunparse
+from urllib.request import Request, urlopen
 
 
 ROOT = Path(__file__).parent
@@ -71,7 +73,11 @@ CONTENT_LIST_FIELDS = [
     "m.data_source",
     "m.sync_status",
     "m.last_sync_at",
+    "m.failed_reason",
 ]
+
+METRIC_FIELDS = ["view_count", "like_count", "comment_count", "collect_count", "share_count"]
+XIAOHONGSHU_SYNC_FIELDS = ["like_count", "comment_count", "collect_count"]
 
 
 def get_connection():
@@ -405,6 +411,9 @@ def initialize_database():
             )
             """
         )
+        add_column_if_missing(connection, "content_metrics", "last_sync_at TEXT DEFAULT ''")
+        add_column_if_missing(connection, "content_metrics", "next_sync_at TEXT DEFAULT ''")
+        add_column_if_missing(connection, "content_metrics", "failed_reason TEXT DEFAULT ''")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS sync_logs (
@@ -466,13 +475,7 @@ def project_to_dict(row):
 
 def content_to_dict(row):
     result = dict(row)
-    for key in [
-        "view_count",
-        "like_count",
-        "comment_count",
-        "collect_count",
-        "share_count",
-    ]:
+    for key in METRIC_FIELDS:
         result[key] = int(result.get(key) or 0)
     result["interaction_count"] = (
         result["like_count"]
@@ -481,6 +484,119 @@ def content_to_dict(row):
         + result["share_count"]
     )
     return result
+
+
+def parse_metric_number(value):
+    text = str(value or "").strip().replace(",", "")
+    if not text:
+        return None
+    text = text.replace("+", "")
+    multiplier = 1
+    lowered = text.lower()
+    if "万" in text or "w" in lowered:
+        multiplier = 10000
+    elif "千" in text or "k" in lowered:
+        multiplier = 1000
+    match = re.search(r"\d+(?:\.\d+)?", text)
+    if not match:
+        return None
+    return int(float(match.group(0)) * multiplier)
+
+
+def find_metric_value(page_text, field_names):
+    for field_name in field_names:
+        patterns = [
+            rf'"{field_name}"\s*:\s*"([^"]+)"',
+            rf'"{field_name}"\s*:\s*(\d+(?:\.\d+)?)',
+            rf"'{field_name}'\s*:\s*'([^']+)'",
+            rf"'{field_name}'\s*:\s*(\d+(?:\.\d+)?)",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, page_text, flags=re.IGNORECASE)
+            if match:
+                value = parse_metric_number(match.group(1))
+                if value is not None:
+                    return value
+    return None
+
+
+def find_labeled_metric(page_text, labels):
+    compact_text = re.sub(r"\s+", "", page_text)
+    for label in labels:
+        patterns = [
+            rf"{label}[:：]?([0-9,.]+(?:万|千|w|W|k|K)?)",
+            rf"([0-9,.]+(?:万|千|w|W|k|K)?){label}",
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, compact_text)
+            if match:
+                value = parse_metric_number(match.group(1))
+                if value is not None:
+                    return value
+    return None
+
+
+def fetch_page_text(url):
+    request = Request(
+        url,
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+        },
+    )
+    with urlopen(request, timeout=18) as response:
+        charset = response.headers.get_content_charset() or "utf-8"
+        return response.read().decode(charset, errors="ignore")
+
+
+def scrape_xiaohongshu_metrics(content_url):
+    page_text = fetch_page_text(content_url)
+    if "验证" in page_text and "小红书" in page_text:
+        raise ValueError("页面可能触发验证或风控，暂时无法自动抓取")
+
+    metrics = {
+        "like_count": find_metric_value(
+            page_text,
+            ["likedCount", "likeCount", "liked_count", "like_count", "likes"],
+        ),
+        "comment_count": find_metric_value(
+            page_text,
+            ["commentCount", "commentsCount", "comment_count", "comments"],
+        ),
+        "collect_count": find_metric_value(
+            page_text,
+            ["collectedCount", "collectCount", "favoriteCount", "collect_count", "favorites"],
+        ),
+    }
+
+    label_fallbacks = {
+        "like_count": ["点赞", "赞"],
+        "comment_count": ["评论"],
+        "collect_count": ["收藏"],
+    }
+    for key, labels in label_fallbacks.items():
+        if metrics[key] is None:
+            metrics[key] = find_labeled_metric(page_text, labels)
+
+    parsed_metrics = {
+        key: metrics[key]
+        for key in XIAOHONGSHU_SYNC_FIELDS
+        if metrics.get(key) is not None
+    }
+    if not parsed_metrics:
+        raise ValueError("没有从页面中识别到点赞、评论或收藏数据")
+    return parsed_metrics
+
+
+def scrape_content_metrics(content):
+    if content["platform"] != "小红书" and "xiaohongshu.com" not in content["content_url"]:
+        raise ValueError("当前第一版只支持小红书链接自动同步")
+    return scrape_xiaohongshu_metrics(content["content_url"])
 
 
 def parse_json_body(handler):
@@ -501,6 +617,19 @@ def clean_int(payload, key, default=0):
     try:
         value = int(raw_value)
     except (TypeError, ValueError) as error:
+        raise ValueError(f"{key} 必须是数字") from error
+    if value < 0:
+        raise ValueError(f"{key} 不能小于 0")
+    return value
+
+
+def parse_optional_int_query(params, key):
+    raw_value = (params.get(key, [""])[0] or "").strip()
+    if raw_value == "":
+        return None
+    try:
+        value = int(raw_value)
+    except ValueError as error:
         raise ValueError(f"{key} 必须是数字") from error
     if value < 0:
         raise ValueError(f"{key} 不能小于 0")
@@ -858,6 +987,17 @@ class TalentPlatformHandler(SimpleHTTPRequestHandler):
             params = parse_qs(parsed_url.query)
             keyword = (params.get("keyword", [""])[0] or "").strip()
             platform = (params.get("platform", [""])[0] or "").strip()
+            category = (params.get("category", [""])[0] or "").strip()
+            owner = (params.get("owner", [""])[0] or "").strip()
+            try:
+                followers_min = parse_optional_int_query(params, "followers_min")
+                followers_max = parse_optional_int_query(params, "followers_max")
+            except ValueError as error:
+                self.send_error_json(str(error), HTTPStatus.BAD_REQUEST)
+                return
+            if followers_min is not None and followers_max is not None and followers_min > followers_max:
+                self.send_error_json("粉丝数最小值不能大于最大值", HTTPStatus.BAD_REQUEST)
+                return
 
             where = []
             values = []
@@ -867,12 +1007,24 @@ class TalentPlatformHandler(SimpleHTTPRequestHandler):
             if platform:
                 where.append("platform = ?")
                 values.append(platform)
+            if category:
+                where.append("category LIKE ?")
+                values.append(f"%{category}%")
+            if owner:
+                where.append("owner LIKE ?")
+                values.append(f"%{owner}%")
+            if followers_min is not None:
+                where.append("followers_count >= ?")
+                values.append(followers_min)
+            if followers_max is not None:
+                where.append("followers_count <= ?")
+                values.append(followers_max)
 
             fields = ", ".join(INFLUENCER_FIELDS)
             sql = f"SELECT {fields} FROM influencers"
             if where:
                 sql += " WHERE " + " AND ".join(where)
-            sql += " ORDER BY updated_at DESC, id DESC"
+            sql += " ORDER BY created_at DESC, id DESC"
 
             with get_connection() as connection:
                 rows = connection.execute(sql, values).fetchall()
@@ -897,6 +1049,7 @@ class TalentPlatformHandler(SimpleHTTPRequestHandler):
             params = parse_qs(parsed_url.query)
             keyword = (params.get("keyword", [""])[0] or "").strip()
             status = (params.get("status", [""])[0] or "").strip()
+            owner = (params.get("owner", [""])[0] or "").strip()
 
             where = []
             values = []
@@ -906,12 +1059,15 @@ class TalentPlatformHandler(SimpleHTTPRequestHandler):
             if status:
                 where.append("status = ?")
                 values.append(status)
+            if owner:
+                where.append("owner LIKE ?")
+                values.append(f"%{owner}%")
 
             fields = ", ".join(PROJECT_FIELDS)
             sql = f"SELECT {fields} FROM projects"
             if where:
                 sql += " WHERE " + " AND ".join(where)
-            sql += " ORDER BY updated_at DESC, id DESC"
+            sql += " ORDER BY created_at DESC, id DESC"
 
             with get_connection() as connection:
                 rows = connection.execute(sql, values).fetchall()
@@ -936,6 +1092,25 @@ class TalentPlatformHandler(SimpleHTTPRequestHandler):
             params = parse_qs(parsed_url.query)
             keyword = (params.get("keyword", [""])[0] or "").strip()
             platform = (params.get("platform", [""])[0] or "").strip()
+            project_id = (params.get("project_id", [""])[0] or "").strip()
+            try:
+                views_min = parse_optional_int_query(params, "views_min")
+                views_max = parse_optional_int_query(params, "views_max")
+                interactions_min = parse_optional_int_query(params, "interactions_min")
+                interactions_max = parse_optional_int_query(params, "interactions_max")
+            except ValueError as error:
+                self.send_error_json(str(error), HTTPStatus.BAD_REQUEST)
+                return
+            if views_min is not None and views_max is not None and views_min > views_max:
+                self.send_error_json("播放量最小值不能大于最大值", HTTPStatus.BAD_REQUEST)
+                return
+            if (
+                interactions_min is not None
+                and interactions_max is not None
+                and interactions_min > interactions_max
+            ):
+                self.send_error_json("互动量最小值不能大于最大值", HTTPStatus.BAD_REQUEST)
+                return
 
             where = []
             values = []
@@ -945,6 +1120,32 @@ class TalentPlatformHandler(SimpleHTTPRequestHandler):
             if platform:
                 where.append("c.platform = ?")
                 values.append(platform)
+            if project_id == "none":
+                where.append("c.project_id IS NULL")
+            elif project_id:
+                try:
+                    project_id_value = int(project_id)
+                except ValueError:
+                    self.send_error_json("项目筛选不正确", HTTPStatus.BAD_REQUEST)
+                    return
+                where.append("c.project_id = ?")
+                values.append(project_id_value)
+            if views_min is not None:
+                where.append("COALESCE(m.view_count, 0) >= ?")
+                values.append(views_min)
+            if views_max is not None:
+                where.append("COALESCE(m.view_count, 0) <= ?")
+                values.append(views_max)
+            interaction_expression = (
+                "COALESCE(m.like_count, 0) + COALESCE(m.comment_count, 0) + "
+                "COALESCE(m.collect_count, 0) + COALESCE(m.share_count, 0)"
+            )
+            if interactions_min is not None:
+                where.append(f"({interaction_expression}) >= ?")
+                values.append(interactions_min)
+            if interactions_max is not None:
+                where.append(f"({interaction_expression}) <= ?")
+                values.append(interactions_max)
 
             fields = ", ".join(CONTENT_LIST_FIELDS)
             sql = f"""
@@ -956,7 +1157,7 @@ class TalentPlatformHandler(SimpleHTTPRequestHandler):
             """
             if where:
                 sql += " WHERE " + " AND ".join(where)
-            sql += " ORDER BY c.published_at DESC, c.updated_at DESC, c.id DESC"
+            sql += " ORDER BY c.created_at DESC, c.id DESC"
 
             with get_connection() as connection:
                 rows = connection.execute(sql, values).fetchall()
@@ -983,6 +1184,9 @@ class TalentPlatformHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
+        if path.startswith("/api/contents/") and path.endswith("/sync"):
+            self.sync_content(path)
+            return
         if path == "/api/contents":
             self.create_content()
             return
@@ -1212,6 +1416,125 @@ class TalentPlatformHandler(SimpleHTTPRequestHandler):
             self.send_error_json(str(error), HTTPStatus.BAD_REQUEST)
         except sqlite3.IntegrityError:
             self.send_error_json("内容链接已存在，不能重复录入", HTTPStatus.BAD_REQUEST)
+
+    def sync_content(self, path):
+        parts = path.strip("/").split("/")
+        if len(parts) != 4 or parts[:2] != ["api", "contents"] or parts[3] != "sync":
+            self.send_error_json("同步接口不存在", HTTPStatus.NOT_FOUND)
+            return
+        try:
+            content_id = int(parts[2])
+        except ValueError:
+            self.send_error_json("内容 ID 不正确", HTTPStatus.BAD_REQUEST)
+            return
+
+        with get_connection() as connection:
+            content = fetch_content(connection, content_id)
+            if content is None:
+                self.send_error_json("内容不存在", HTTPStatus.NOT_FOUND)
+                return
+
+        started_source = "网页解析"
+        try:
+            scraped_metrics = scrape_content_metrics(content)
+            merged_metrics = {
+                key: scraped_metrics.get(key, content.get(key, 0))
+                for key in METRIC_FIELDS
+            }
+            merged_metrics["view_count"] = content.get("view_count", 0)
+            merged_metrics["share_count"] = content.get("share_count", 0)
+            with get_connection() as connection:
+                connection.execute(
+                    """
+                    INSERT INTO content_metrics
+                        (content_id, view_count, like_count, comment_count, collect_count,
+                         share_count, data_source, sync_status, last_sync_at, failed_reason,
+                         updated_at)
+                    VALUES
+                        (:content_id, :view_count, :like_count, :comment_count, :collect_count,
+                         :share_count, :data_source, '同步成功', CURRENT_TIMESTAMP, '',
+                         CURRENT_TIMESTAMP)
+                    ON CONFLICT(content_id) DO UPDATE SET
+                        view_count = excluded.view_count,
+                        like_count = excluded.like_count,
+                        comment_count = excluded.comment_count,
+                        collect_count = excluded.collect_count,
+                        share_count = excluded.share_count,
+                        data_source = excluded.data_source,
+                        sync_status = '同步成功',
+                        last_sync_at = CURRENT_TIMESTAMP,
+                        failed_reason = '',
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    {
+                        "content_id": content_id,
+                        "data_source": started_source,
+                        **merged_metrics,
+                    },
+                )
+                connection.execute(
+                    """
+                    INSERT INTO sync_logs
+                        (content_id, source, status, finished_at, raw_summary)
+                    VALUES
+                        (?, ?, '成功', CURRENT_TIMESTAMP, ?)
+                    """,
+                    (content_id, started_source, json.dumps(scraped_metrics, ensure_ascii=False)),
+                )
+                synced_content = fetch_content(connection, content_id)
+            self.send_json(
+                {
+                    "message": "同步成功",
+                    "metrics": scraped_metrics,
+                    "content": synced_content,
+                }
+            )
+        except Exception as error:
+            failed_reason = str(error) or "同步失败"
+            with get_connection() as connection:
+                connection.execute(
+                    """
+                    INSERT INTO content_metrics
+                        (content_id, view_count, like_count, comment_count, collect_count,
+                         share_count, data_source, sync_status, last_sync_at, failed_reason,
+                         updated_at)
+                    VALUES
+                        (?, ?, ?, ?, ?, ?, ?, '同步失败', CURRENT_TIMESTAMP, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(content_id) DO UPDATE SET
+                        data_source = excluded.data_source,
+                        sync_status = '同步失败',
+                        last_sync_at = CURRENT_TIMESTAMP,
+                        failed_reason = excluded.failed_reason,
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (
+                        content_id,
+                        content.get("view_count", 0),
+                        content.get("like_count", 0),
+                        content.get("comment_count", 0),
+                        content.get("collect_count", 0),
+                        content.get("share_count", 0),
+                        started_source,
+                        failed_reason,
+                    ),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO sync_logs
+                        (content_id, source, status, finished_at, error_message)
+                    VALUES
+                        (?, ?, '失败', CURRENT_TIMESTAMP, ?)
+                    """,
+                    (content_id, started_source, failed_reason),
+                )
+                failed_content = fetch_content(connection, content_id)
+            self.send_json(
+                {
+                    "message": failed_reason,
+                    "content": failed_content,
+                },
+                HTTPStatus.BAD_REQUEST,
+            )
 
     def update_content(self, path):
         content_id = self.extract_id(path)

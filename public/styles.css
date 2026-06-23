@@ -10,6 +10,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   min-width: 1180px;
   margin: 0;
@@ -126,8 +130,7 @@ a {
   margin-bottom: 22px;
 }
 
-.eyebrow,
-.hero-label {
+.eyebrow {
   margin-bottom: 7px;
   color: #71809d;
   font-size: 11px;
@@ -181,59 +184,13 @@ a {
   background: #dce9ff;
 }
 
-.hero {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 260px;
-  gap: 24px;
-  min-height: 220px;
-  overflow: hidden;
-  padding: 34px;
-  border: 1px solid #dfe6f3;
-  border-radius: 18px;
-  background:
-    radial-gradient(circle at 82% 12%, rgba(36, 107, 253, 0.22), transparent 34%),
-    linear-gradient(135deg, #ffffff 0%, #edf4ff 100%);
-}
-
-.hero h2 {
-  max-width: 620px;
-  font-size: 36px;
-}
-
-.hero-description {
-  max-width: 650px;
-  margin: 18px 0 0;
-  color: #5d6b86;
-  line-height: 1.8;
-}
-
-.hero-card {
-  align-self: stretch;
-  display: grid;
-  align-content: center;
-  gap: 10px;
-  border: 1px solid rgba(36, 107, 253, 0.18);
-  border-radius: 16px;
-  padding: 24px;
-  background: rgba(255, 255, 255, 0.78);
-}
-
-.hero-card span {
-  width: fit-content;
-  border-radius: 999px;
-  padding: 5px 10px;
+.external-text-link {
   color: #246bfd;
-  background: #e8f0ff;
-  font-weight: 700;
+  font-weight: 800;
 }
 
-.hero-card strong {
-  color: #15213a;
-  font-size: 30px;
-}
-
-.hero-card small {
-  color: #71809d;
+.external-text-link:hover {
+  text-decoration: underline;
 }
 
 .stats {
@@ -376,14 +333,55 @@ a {
 }
 
 .filters {
-  display: grid;
-  grid-template-columns: 280px 220px auto;
+  display: flex;
   align-items: end;
-  gap: 14px;
+  gap: 10px;
+  overflow-x: auto;
   margin-bottom: 20px;
-  padding: 16px;
+  padding: 12px;
   border-radius: 12px;
   background: #f7f9fd;
+}
+
+.filters label {
+  min-width: 128px;
+  max-width: 170px;
+  flex: 0 0 auto;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.filters label:first-child {
+  min-width: 190px;
+}
+
+.filters .secondary-button {
+  flex: 0 0 auto;
+  min-width: 68px;
+  height: 36px;
+  padding: 0 14px;
+}
+
+.filters input,
+.filters select {
+  height: 36px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.range-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.range-filter .range-inputs {
+  margin-left: 0;
+}
+
+.range-filter {
+  min-width: 150px;
+  max-width: 160px;
 }
 
 .table-wrap {
