@@ -1,6 +1,8 @@
 const statsElement = document.querySelector("#stats");
 const messageElement = document.querySelector("#message");
 const openCreateButton = document.querySelector("#open-create-button");
+const logoutButton = document.querySelector("#logout-button");
+const currentUserElement = document.querySelector("#current-user");
 const detailSection = document.querySelector("#detail-section");
 const detailEyebrow = document.querySelector("#detail-eyebrow");
 const detailTitle = document.querySelector("#detail-title");
@@ -130,10 +132,19 @@ function showMessage(text, type = "success") {
 async function requestJson(url, options = {}) {
   const response = await fetch(url, options);
   const result = await response.json();
+  if (response.status === 401) {
+    window.location.href = "/login.html";
+    throw new Error("请先登录");
+  }
   if (!response.ok) {
     throw new Error(result.message || "请求失败");
   }
   return result;
+}
+
+async function loadCurrentUser() {
+  const result = await requestJson("/api/auth/me");
+  currentUserElement.textContent = result.user.display_name || result.user.username;
 }
 
 function renderStats() {
@@ -761,6 +772,14 @@ window.addEventListener("hashchange", () => {
 
 openCreateButton.addEventListener("click", openCreateDialog);
 
+logoutButton.addEventListener("click", async () => {
+  try {
+    await requestJson("/api/auth/logout", { method: "POST" });
+  } finally {
+    window.location.href = "/login.html";
+  }
+});
+
 document.querySelectorAll(".dialog-close-button").forEach((button) => {
   button.addEventListener("click", () => {
     influencerDialog.close();
@@ -1018,4 +1037,10 @@ contentForm.addEventListener("submit", async (event) => {
   }
 });
 
-switchView(getViewFromHash(), false);
+loadCurrentUser()
+  .then(() => {
+    switchView(getViewFromHash(), false);
+  })
+  .catch(() => {
+    window.location.href = "/login.html";
+  });

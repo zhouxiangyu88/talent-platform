@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>登录 - 达人运营平台</title>
+    <link rel="stylesheet" href="/styles.css?v=20260623-auth" />
+  </head>
+  <body class="auth-page">
+    <main class="auth-card">
+      <div class="brand auth-brand">
+        <span class="brand-mark">D</span>
+        <div>
+          <strong>达人中台</strong>
+          <small>Creator Ops</small>
+        </div>
+      </div>
+
+      <h1>登录平台</h1>
+      <p class="auth-description">请输入账号和密码，进入达人运营平台。</p>
+
+      <div id="auth-message" class="message" hidden></div>
+
+      <form id="login-form" class="auth-form">
+        <label>
+          账号
+          <input name="username" required autocomplete="username" placeholder="请输入账号" />
+        </label>
+        <label>
+          密码
+          <input name="password" type="password" required autocomplete="current-password" placeholder="请输入密码" />
+        </label>
+        <button class="primary-button submit-button" type="submit">登录</button>
+      </form>
+
+      <p class="auth-footer">
+        还没有账号？<a href="/register.html">使用邀请码注册</a>
+      </p>
+    </main>
+
+    <script src="/auth.js?v=20260623-auth"></script>
+  </body>
+</html>

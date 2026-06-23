@@ -1,7 +1,12 @@
 import json
+import os
 import re
+import secrets
 import sqlite3
+import hashlib
+import hmac
 from http import HTTPStatus
+from http.cookies import SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse, urlunparse
@@ -10,9 +15,13 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).parent
 PUBLIC_DIR = ROOT / "public"
-DATABASE_PATH = ROOT / "data" / "talent_platform.db"
-HOST = "127.0.0.1"
-PORT = 8000
+DATA_DIR = Path(os.environ.get("DATA_DIR", ROOT / "data"))
+DATABASE_PATH = Path(os.environ.get("DATABASE_PATH", DATA_DIR / "talent_platform.db"))
+HOST = os.environ.get("HOST", "127.0.0.1")
+PORT = int(os.environ.get("PORT", "8000"))
+SESSION_COOKIE_NAME = "talent_session"
+DEFAULT_INVITE_CODE = "talent2026"
+PASSWORD_ITERATIONS = 200_000
 
 
 INFLUENCER_FIELDS = [
@@ -98,6 +107,39 @@ def add_column_if_missing(connection, table_name, column_definition):
         connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_definition}")
 
 
+def get_invite_code():
+    return os.environ.get("INVITE_CODE", DEFAULT_INVITE_CODE)
+
+
+def hash_password(password, salt=None):
+    salt = salt or secrets.token_hex(16)
+    password_hash = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt.encode("utf-8"),
+        PASSWORD_ITERATIONS,
+    ).hex()
+    return f"{PASSWORD_ITERATIONS}${salt}${password_hash}"
+
+
+def verify_password(password, stored_password):
+    try:
+        iterations_text, salt, expected_hash = stored_password.split("$", 2)
+        password_hash = hashlib.pbkdf2_hmac(
+            "sha256",
+            password.encode("utf-8"),
+            salt.encode("utf-8"),
+            int(iterations_text),
+        ).hex()
+    except (ValueError, TypeError):
+        return False
+    return hmac.compare_digest(password_hash, expected_hash)
+
+
+def generate_session_token():
+    return secrets.token_urlsafe(32)
+
+
 def extract_first_url(text):
     for part in str(text or "").split():
         if part.startswith(("http://", "https://")):
@@ -164,6 +206,31 @@ def extract_platform_content_id(platform, raw_url):
 
 def initialize_database():
     with get_connection() as connection:
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                display_name TEXT DEFAULT '',
+                status TEXT NOT NULL DEFAULT '正常',
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS sessions (
+                token TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id)
+            )
+            """
+        )
+
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS influencers (
@@ -795,6 +862,18 @@ def fetch_content(connection, content_id):
     return content_to_dict(row) if row else None
 
 
+def fetch_user(connection, user_id):
+    row = connection.execute(
+        """
+        SELECT id, username, display_name
+        FROM users
+        WHERE id = ?
+        """,
+        (user_id,),
+    ).fetchone()
+    return user_to_dict(row) if row else None
+
+
 def duplicate_exists(connection, name, platform, exclude_id=None):
     if exclude_id is None:
         row = connection.execute(
@@ -954,6 +1033,14 @@ def has_legacy_followers_column(connection):
     return column_exists(connection, "influencers", "followers")
 
 
+def user_to_dict(row):
+    return {
+        "id": row["id"],
+        "username": row["username"],
+        "display_name": row["display_name"] or row["username"],
+    }
+
+
 class TalentPlatformHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(PUBLIC_DIR), **kwargs)
@@ -962,10 +1049,14 @@ class TalentPlatformHandler(SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store, max-age=0")
         super().end_headers()
 
-    def send_json(self, data, status=HTTPStatus.OK):
+    def send_json(self, data, status=HTTPStatus.OK, cookie_token=None, clear_cookie=False):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        if cookie_token:
+            self.set_session_cookie(cookie_token)
+        if clear_cookie:
+            self.clear_session_cookie()
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -973,9 +1064,93 @@ class TalentPlatformHandler(SimpleHTTPRequestHandler):
     def send_error_json(self, message, status=HTTPStatus.BAD_REQUEST):
         self.send_json({"message": message}, status)
 
+    def get_session_token(self):
+        cookie_header = self.headers.get("Cookie", "")
+        cookie = SimpleCookie()
+        cookie.load(cookie_header)
+        morsel = cookie.get(SESSION_COOKIE_NAME)
+        return morsel.value if morsel else ""
+
+    def get_current_user(self):
+        token = self.get_session_token()
+        if not token:
+            return None
+        with get_connection() as connection:
+            row = connection.execute(
+                """
+                SELECT u.id, u.username, u.display_name
+                FROM sessions s
+                JOIN users u ON u.id = s.user_id
+                WHERE s.token = ? AND u.status = '正常'
+                """,
+                (token,),
+            ).fetchone()
+            if row:
+                connection.execute(
+                    "UPDATE sessions SET last_seen_at = CURRENT_TIMESTAMP WHERE token = ?",
+                    (token,),
+                )
+        return user_to_dict(row) if row else None
+
+    def require_user(self):
+        user = self.get_current_user()
+        if user is None:
+            if self.path.startswith("/api/"):
+                self.send_error_json("请先登录", HTTPStatus.UNAUTHORIZED)
+            else:
+                self.send_response(HTTPStatus.FOUND)
+                self.send_header("Location", "/login.html")
+                self.end_headers()
+            return None
+        return user
+
+    def set_session_cookie(self, token):
+        self.send_header(
+            "Set-Cookie",
+            f"{SESSION_COOKIE_NAME}={token}; HttpOnly; Path=/; SameSite=Lax",
+        )
+
+    def clear_session_cookie(self):
+        self.send_header(
+            "Set-Cookie",
+            f"{SESSION_COOKIE_NAME}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0",
+        )
+
     def do_GET(self):
         parsed_url = urlparse(self.path)
         path = parsed_url.path
+
+        public_paths = {"/login.html", "/register.html", "/auth.js", "/styles.css"}
+        if path in public_paths:
+            super().do_GET()
+            return
+
+        if path == "/healthz":
+            self.send_json({"status": "ok"})
+            return
+
+        if path == "/api/auth/me":
+            user = self.require_user()
+            if user is not None:
+                self.send_json({"user": user})
+            return
+
+        if path == "/":
+            if self.require_user() is None:
+                return
+            self.path = "/index.html"
+            super().do_GET()
+            return
+
+        if path == "/index.html":
+            if self.require_user() is None:
+                return
+            super().do_GET()
+            return
+
+        if path.startswith("/api/") and path not in {"/api/auth/me"}:
+            if self.require_user() is None:
+                return
 
         if path == "/api/dashboard/summary":
             with get_connection() as connection:
@@ -1178,12 +1353,21 @@ class TalentPlatformHandler(SimpleHTTPRequestHandler):
             self.send_json(content)
             return
 
-        if path == "/":
-            self.path = "/index.html"
         super().do_GET()
 
     def do_POST(self):
         path = urlparse(self.path).path
+        if path == "/api/auth/register":
+            self.register_user()
+            return
+        if path == "/api/auth/login":
+            self.login_user()
+            return
+        if path == "/api/auth/logout":
+            self.logout_user()
+            return
+        if self.require_user() is None:
+            return
         if path.startswith("/api/contents/") and path.endswith("/sync"):
             self.sync_content(path)
             return
@@ -1253,8 +1437,87 @@ class TalentPlatformHandler(SimpleHTTPRequestHandler):
         except sqlite3.IntegrityError:
             self.send_error_json("同一个媒体平台下已存在同名达人，不能重复录入", HTTPStatus.BAD_REQUEST)
 
+    def register_user(self):
+        try:
+            payload = parse_json_body(self)
+            username = clean_text(payload, "username").lower()
+            display_name = clean_text(payload, "display_name")
+            password = clean_text(payload, "password")
+            invite_code = clean_text(payload, "invite_code")
+
+            if not username:
+                raise ValueError("账号不能为空")
+            if len(username) < 3 or len(username) > 40:
+                raise ValueError("账号长度需要在 3-40 位之间")
+            if not re.fullmatch(r"[a-z0-9_.@-]+", username):
+                raise ValueError("账号只能包含字母、数字、下划线、点、@ 或横线")
+            if len(password) < 6:
+                raise ValueError("密码至少 6 位")
+            if invite_code != get_invite_code():
+                raise ValueError("邀请码不正确")
+
+            password_hash = hash_password(password)
+            token = generate_session_token()
+            with get_connection() as connection:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO users (username, password_hash, display_name, updated_at)
+                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                    """,
+                    (username, password_hash, display_name),
+                )
+                user_id = cursor.lastrowid
+                connection.execute(
+                    "INSERT INTO sessions (token, user_id) VALUES (?, ?)",
+                    (token, user_id),
+                )
+                user = fetch_user(connection, user_id)
+            self.send_json({"user": user}, HTTPStatus.CREATED, cookie_token=token)
+        except sqlite3.IntegrityError:
+            self.send_error_json("账号已存在", HTTPStatus.BAD_REQUEST)
+        except (ValueError, TypeError, json.JSONDecodeError) as error:
+            self.send_error_json(str(error), HTTPStatus.BAD_REQUEST)
+
+    def login_user(self):
+        try:
+            payload = parse_json_body(self)
+            username = clean_text(payload, "username").lower()
+            password = clean_text(payload, "password")
+            if not username or not password:
+                raise ValueError("账号和密码不能为空")
+
+            with get_connection() as connection:
+                row = connection.execute(
+                    """
+                    SELECT id, username, password_hash, display_name
+                    FROM users
+                    WHERE username = ? AND status = '正常'
+                    """,
+                    (username,),
+                ).fetchone()
+                if row is None or not verify_password(password, row["password_hash"]):
+                    raise ValueError("账号或密码不正确")
+                token = generate_session_token()
+                connection.execute(
+                    "INSERT INTO sessions (token, user_id) VALUES (?, ?)",
+                    (token, row["id"]),
+                )
+                user = user_to_dict(row)
+            self.send_json({"user": user}, cookie_token=token)
+        except (ValueError, TypeError, json.JSONDecodeError) as error:
+            self.send_error_json(str(error), HTTPStatus.BAD_REQUEST)
+
+    def logout_user(self):
+        token = self.get_session_token()
+        if token:
+            with get_connection() as connection:
+                connection.execute("DELETE FROM sessions WHERE token = ?", (token,))
+        self.send_json({"message": "已退出"}, clear_cookie=True)
+
     def do_PUT(self):
         path = urlparse(self.path).path
+        if self.require_user() is None:
+            return
         if path.startswith("/api/contents/"):
             self.update_content(path)
             return

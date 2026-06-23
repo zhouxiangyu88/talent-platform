@@ -30,7 +30,11 @@
           <p class="eyebrow">CREATOR OPERATIONS PLATFORM</p>
           <h1>达人运营平台</h1>
         </div>
-        <button id="open-create-button" class="primary-button">+ 新增达人</button>
+        <div class="topbar-actions">
+          <span id="current-user" class="current-user">加载用户...</span>
+          <button id="logout-button" class="secondary-button" type="button">退出</button>
+          <button id="open-create-button" class="primary-button">+ 新增达人</button>
+        </div>
       </header>
 
       <section id="stats" class="stats" aria-label="数据概览"></section>
@@ -526,6 +530,6 @@
       </form>
     </dialog>
 
-    <script src="/app.js?v=20260623-sync"></script>
+    <script src="/app.js?v=20260623-auth"></script>
   </body>
 </html>

@@ -4,6 +4,7 @@
 
 当前版本已经完成第一版核心闭环：
 
+- 登录注册：账号密码登录、邀请码注册、退出登录
 - 达人库：新增、编辑、搜索、筛选、详情、同平台同名防重复
 - 项目库：新增、编辑、搜索、筛选、详情、项目编号防重复
 - 内容库：新增、编辑、搜索、筛选、详情
@@ -30,6 +31,26 @@ http://127.0.0.1:8000
 
 按 `Ctrl+C` 停止服务。
 
+## 登录注册
+
+平台已增加轻量登录能力：
+
+- `/login.html`：登录
+- `/register.html`：邀请码注册
+- `/api/auth/logout`：退出登录
+
+本地默认邀请码：
+
+```text
+talent2026
+```
+
+上线时建议通过环境变量设置正式邀请码：
+
+```bash
+INVITE_CODE=你的正式邀请码
+```
+
 ## 数据保存在哪里
 
 本地数据保存在：
@@ -38,7 +59,33 @@ http://127.0.0.1:8000
 data/talent_platform.db
 ```
 
+也可以通过环境变量指定数据库路径：
+
+```bash
+DATABASE_PATH=/var/data/talent_platform.db
+```
+
 `data/` 目录已加入 `.gitignore`，不会提交到 GitHub。这样可以避免把本地测试数据、业务数据误上传。
+
+## 部署到 Render
+
+项目已提供 `render.yaml`，适合先部署到 Render 试用。
+
+推荐配置：
+
+- Web Service：Python
+- Start Command：`python3 server.py`
+- Health Check Path：`/healthz`
+- Persistent Disk：挂载到 `/var/data`
+- `DATABASE_PATH`：`/var/data/talent_platform.db`
+- `HOST`：`0.0.0.0`
+- `INVITE_CODE`：在 Render 后台手动填写正式邀请码
+
+上线前注意：
+
+- 必须配置持久化磁盘，否则云服务重启后 SQLite 数据可能丢失。
+- 不要把正式邀请码写进 GitHub。
+- 第一次上线后，先用邀请码注册自己的账号，再把链接发给其他人。
 
 ## 项目结构
 
@@ -105,6 +152,11 @@ data/talent_platform.db
 
 ```text
 GET  /api/dashboard/summary
+
+POST /api/auth/register
+POST /api/auth/login
+POST /api/auth/logout
+GET  /api/auth/me
 
 GET  /api/influencers
 POST /api/influencers

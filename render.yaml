@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: talent-platform
+    runtime: python
+    plan: free
+    buildCommand: ""
+    startCommand: "python3 server.py"
+    healthCheckPath: /healthz
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: DATABASE_PATH
+        value: /var/data/talent_platform.db
+      - key: INVITE_CODE
+        sync: false
+    disks:
+      - name: talent-platform-data
+        mountPath: /var/data
+        sizeGB: 1
