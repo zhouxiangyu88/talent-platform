@@ -87,6 +87,40 @@ CONTENT_LIST_FIELDS = [
 
 METRIC_FIELDS = ["view_count", "like_count", "comment_count", "collect_count", "share_count"]
 XIAOHONGSHU_SYNC_FIELDS = ["like_count", "comment_count", "collect_count"]
+INFLUENCER_PLATFORMS = {"小红书", "抖音", "B站", "视频号", "微博", "快手", "其他"}
+INFLUENCER_CATEGORIES = {
+    "影视娱乐",
+    "音乐",
+    "生活",
+    "人文艺术",
+    "摄影",
+    "旅游",
+    "搞笑趣闻",
+    "情感",
+    "教育",
+    "母婴育儿",
+    "财经",
+    "游戏动漫",
+    "健康",
+    "运动",
+    "科学科普",
+    "科技",
+    "互联网",
+    "职场管理",
+    "美食",
+    "时尚",
+    "美妆",
+    "萌宠",
+    "汽车",
+}
+PROFILE_URL_DOMAINS = {
+    "小红书": ("xiaohongshu.com", "xhslink.com"),
+    "抖音": ("douyin.com", "v.douyin.com", "iesdouyin.com"),
+    "B站": ("bilibili.com", "space.bilibili.com", "b23.tv"),
+    "视频号": ("channels.weixin.qq.com", "weixin.qq.com"),
+    "微博": ("weibo.com", "weibo.cn"),
+    "快手": ("kuaishou.com", "v.kuaishou.com", "live.kuaishou.com"),
+}
 
 
 def get_connection():
@@ -312,7 +346,7 @@ def initialize_database():
                         "小鹿的厨房",
                         "小红书",
                         "redbook_1001",
-                        "https://example.com/xiaolu",
+                        "https://www.xiaohongshu.com/user/profile/redbook_1001",
                         "美食",
                         128000,
                         "xiaolu_ops",
@@ -327,7 +361,7 @@ def initialize_database():
                         "阿川去旅行",
                         "抖音",
                         "douyin_achuan",
-                        "https://example.com/achuan",
+                        "https://www.douyin.com/user/douyin_achuan",
                         "旅行",
                         356000,
                         "",
@@ -342,8 +376,8 @@ def initialize_database():
                         "数码研究所",
                         "B站",
                         "bili_digital_lab",
-                        "https://example.com/digital",
-                        "数码",
+                        "https://space.bilibili.com/2048",
+                        "科技",
                         89000,
                         "",
                         "",
@@ -677,6 +711,65 @@ def clean_text(payload, key, default=""):
     return str(payload.get(key, default) or "").strip()
 
 
+def normalize_category_tags(value):
+    tags = []
+    for tag in re.split(r"[、,，]", str(value or "")):
+        tag = tag.strip()
+        if not tag:
+            continue
+        if tag not in INFLUENCER_CATEGORIES:
+            raise ValueError(f"达人分类「{tag}」不在可选标签中")
+        if tag not in tags:
+            tags.append(tag)
+    return "、".join(tags)
+
+
+def host_matches_domain(host, allowed_domain):
+    return host == allowed_domain or host.endswith(f".{allowed_domain}")
+
+
+def normalize_profile_url(profile_url, platform):
+    url = str(profile_url or "").strip()
+    if not url:
+        return ""
+    if re.search(r"\s", url):
+        raise ValueError("主页链接不能包含空格")
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("主页链接必须以 http:// 或 https:// 开头")
+    if platform == "其他":
+        return url
+
+    allowed_domains = PROFILE_URL_DOMAINS.get(platform, ())
+    host = parsed.netloc.lower()
+    if allowed_domains and not any(host_matches_domain(host, domain) for domain in allowed_domains):
+        raise ValueError(f"当前媒体平台为{platform}，请填写{platform}相关主页链接")
+    return url
+
+
+def normalize_phone(phone):
+    value = str(phone or "").strip()
+    if not value:
+        return ""
+    compact = re.sub(r"[\s-]", "", value)
+    if compact.startswith("+86"):
+        compact = compact[3:]
+    elif compact.startswith("0086"):
+        compact = compact[4:]
+    if not re.fullmatch(r"1[3-9]\d{9}", compact):
+        raise ValueError("手机号格式不正确，请填写 11 位中国大陆手机号")
+    return compact
+
+
+def normalize_email(email):
+    value = str(email or "").strip().lower()
+    if not value:
+        return ""
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", value):
+        raise ValueError("邮箱格式不正确")
+    return value
+
+
 def clean_int(payload, key, default=0):
     raw_value = payload.get(key, default)
     if raw_value in ("", None):
@@ -719,13 +812,15 @@ def clean_optional_id(payload, key):
 def normalize_influencer_payload(payload):
     name = clean_text(payload, "name")
     platform = clean_text(payload, "platform")
-    category = clean_text(payload, "category")
+    category = normalize_category_tags(clean_text(payload, "category"))
     status = clean_text(payload, "status", "正常") or "正常"
 
     if not name:
         raise ValueError("达人名称不能为空")
     if not platform:
         raise ValueError("媒体平台不能为空")
+    if platform not in INFLUENCER_PLATFORMS:
+        raise ValueError("媒体平台不在可选范围内")
     if status not in {"正常", "停用"}:
         raise ValueError("达人状态只能是正常或停用")
 
@@ -744,12 +839,12 @@ def normalize_influencer_payload(payload):
         "name": name,
         "platform": platform,
         "account_id": clean_text(payload, "account_id"),
-        "profile_url": clean_text(payload, "profile_url"),
+        "profile_url": normalize_profile_url(clean_text(payload, "profile_url"), platform),
         "category": category,
         "followers_count": followers_count,
         "wechat": clean_text(payload, "wechat"),
-        "phone": clean_text(payload, "phone"),
-        "email": clean_text(payload, "email"),
+        "phone": normalize_phone(clean_text(payload, "phone")),
+        "email": normalize_email(clean_text(payload, "email")),
         "other_contact": clean_text(payload, "other_contact"),
         "owner": clean_text(payload, "owner"),
         "status": status,

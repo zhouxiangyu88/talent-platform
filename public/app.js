@@ -21,6 +21,9 @@ const influencerForm = document.querySelector("#influencer-form");
 const influencerFormTitle = document.querySelector("#influencer-form-title");
 const influencerFormEyebrow = document.querySelector("#influencer-form-eyebrow");
 const influencerKeywordInput = document.querySelector("#influencer-keyword-input");
+const influencerCategoryToggle = document.querySelector("#influencer-category-toggle");
+const influencerCategorySummary = document.querySelector("#influencer-category-summary");
+const influencerCategoryOptionsElement = document.querySelector("#influencer-category-options");
 const platformFilter = document.querySelector("#platform-filter");
 const influencerCategoryFilter = document.querySelector("#influencer-category-filter");
 const influencerOwnerFilter = document.querySelector("#influencer-owner-filter");
@@ -62,6 +65,187 @@ let dashboardSummary = null;
 let activeView = "dashboard";
 let activeDetail = null;
 const validViews = new Set(["dashboard", "influencers", "projects", "contents"]);
+const influencerCategoryOptions = [
+  "影视娱乐",
+  "音乐",
+  "生活",
+  "人文艺术",
+  "摄影",
+  "旅游",
+  "搞笑趣闻",
+  "情感",
+  "教育",
+  "母婴育儿",
+  "财经",
+  "游戏动漫",
+  "健康",
+  "运动",
+  "科学科普",
+  "科技",
+  "互联网",
+  "职场管理",
+  "美食",
+  "时尚",
+  "美妆",
+  "萌宠",
+  "汽车",
+];
+const profileUrlDomainMap = {
+  小红书: ["xiaohongshu.com", "xhslink.com"],
+  抖音: ["douyin.com", "v.douyin.com", "iesdouyin.com"],
+  B站: ["bilibili.com", "space.bilibili.com", "b23.tv"],
+  视频号: ["channels.weixin.qq.com", "weixin.qq.com"],
+  微博: ["weibo.com", "weibo.cn"],
+  快手: ["kuaishou.com", "v.kuaishou.com", "live.kuaishou.com"],
+};
+
+function splitCategoryTags(value) {
+  return String(value || "")
+    .split(/[、,，]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function renderInfluencerCategoryOptions() {
+  if (!influencerCategoryOptionsElement) {
+    return;
+  }
+  influencerCategoryOptionsElement.innerHTML = influencerCategoryOptions
+    .map(
+      (tag) => `
+        <label class="tag-option">
+          <input type="checkbox" name="category_tags" value="${escapeHtml(tag)}" />
+          <span>${escapeHtml(tag)}</span>
+        </label>
+      `,
+    )
+    .join("");
+  updateInfluencerCategorySummary();
+}
+
+function renderInfluencerCategoryFilterOptions() {
+  if (!influencerCategoryFilter) {
+    return;
+  }
+  influencerCategoryFilter.innerHTML = `
+    <option value="">全部分类</option>
+    ${influencerCategoryOptions
+      .map((tag) => `<option value="${escapeHtml(tag)}">${escapeHtml(tag)}</option>`)
+      .join("")}
+  `;
+}
+
+function setInfluencerCategoryTags(value) {
+  const selectedTags = new Set(splitCategoryTags(value));
+  influencerForm.querySelectorAll('input[name="category_tags"]').forEach((input) => {
+    input.checked = selectedTags.has(input.value);
+  });
+  updateInfluencerCategorySummary();
+}
+
+function getSelectedInfluencerCategoryTags() {
+  return Array.from(influencerForm.querySelectorAll('input[name="category_tags"]:checked')).map(
+    (input) => input.value,
+  );
+}
+
+function updateInfluencerCategorySummary() {
+  if (!influencerCategorySummary) {
+    return;
+  }
+  const selectedTags = getSelectedInfluencerCategoryTags();
+  if (selectedTags.length === 0) {
+    influencerCategorySummary.textContent = "选择一个或多个分类";
+    influencerCategorySummary.classList.add("is-placeholder");
+    return;
+  }
+  influencerCategorySummary.classList.remove("is-placeholder");
+  influencerCategorySummary.innerHTML = selectedTags
+    .slice(0, 3)
+    .map((tag) => `<span class="selected-tag">${escapeHtml(tag)}</span>`)
+    .join("");
+  if (selectedTags.length > 3) {
+    influencerCategorySummary.insertAdjacentHTML(
+      "beforeend",
+      `<span class="selected-tag more-tag">+${selectedTags.length - 3}</span>`,
+    );
+  }
+}
+
+function closeInfluencerCategoryOptions() {
+  if (!influencerCategoryOptionsElement || !influencerCategoryToggle) {
+    return;
+  }
+  influencerCategoryOptionsElement.hidden = true;
+  influencerCategoryToggle.setAttribute("aria-expanded", "false");
+}
+
+function clearFieldErrors(form) {
+  form.querySelectorAll(".field-error").forEach((errorElement) => {
+    errorElement.hidden = true;
+    errorElement.textContent = "";
+  });
+  form.querySelectorAll(".field-invalid").forEach((element) => {
+    element.classList.remove("field-invalid");
+  });
+}
+
+function showFieldErrors(form, errors) {
+  clearFieldErrors(form);
+  Object.entries(errors).forEach(([fieldName, message]) => {
+    const errorElement = form.querySelector(`[data-error-for="${fieldName}"]`);
+    const fieldElement = form.elements[fieldName];
+    if (errorElement) {
+      errorElement.textContent = message;
+      errorElement.hidden = false;
+    }
+    fieldElement?.classList.add("field-invalid");
+  });
+}
+
+function validateInfluencerPayload(payload) {
+  const errors = {};
+  const profileUrl = String(payload.profile_url || "").trim();
+  if (profileUrl) {
+    try {
+      const parsedUrl = new URL(profileUrl);
+      if (!["http:", "https:"].includes(parsedUrl.protocol)) {
+        errors.profile_url = "主页链接必须以 http:// 或 https:// 开头";
+      } else if (payload.platform !== "其他") {
+        const allowedDomains = profileUrlDomainMap[payload.platform] || [];
+        const host = parsedUrl.hostname.toLowerCase();
+        const isAllowedDomain = allowedDomains.some(
+          (domain) => host === domain || host.endsWith(`.${domain}`),
+        );
+        if (allowedDomains.length > 0 && !isAllowedDomain) {
+          errors.profile_url = `当前媒体平台为${payload.platform}，请填写${payload.platform}相关主页链接`;
+        }
+      }
+    } catch {
+      errors.profile_url = "主页链接格式不正确";
+    }
+  }
+
+  const phone = String(payload.phone || "").trim();
+  if (phone) {
+    let compactPhone = phone.replace(/[\s-]/g, "");
+    if (compactPhone.startsWith("+86")) {
+      compactPhone = compactPhone.slice(3);
+    } else if (compactPhone.startsWith("0086")) {
+      compactPhone = compactPhone.slice(4);
+    }
+    if (!/^1[3-9]\d{9}$/.test(compactPhone)) {
+      errors.phone = "请填写 11 位中国大陆手机号，例如 13800138000";
+    }
+  }
+
+  const email = String(payload.email || "").trim();
+  if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+    errors.email = "邮箱格式不正确，例如 name@example.com";
+  }
+
+  return errors;
+}
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -129,6 +313,27 @@ function showMessage(text, type = "success") {
   }, 3200);
 }
 
+function clearFormMessage(form) {
+  const formMessage = form.querySelector(".form-message");
+  clearFieldErrors(form);
+  if (!formMessage) {
+    return;
+  }
+  formMessage.hidden = true;
+  formMessage.textContent = "";
+}
+
+function showFormMessage(form, text) {
+  const formMessage = form.querySelector(".form-message");
+  if (!formMessage) {
+    showMessage(text, "error");
+    return;
+  }
+  formMessage.textContent = text;
+  formMessage.hidden = false;
+  form.scrollTo({ top: 0, behavior: "smooth" });
+}
+
 async function requestJson(url, options = {}) {
   const response = await fetch(url, options);
   const result = await response.json();
@@ -170,6 +375,21 @@ function renderStats() {
       `,
     )
     .join("");
+}
+
+function renderCategoryTags(category) {
+  const tags = splitCategoryTags(category);
+  if (tags.length === 0) {
+    return "-";
+  }
+  const visibleTags = tags.slice(0, 1);
+  const hiddenCount = tags.length - visibleTags.length;
+  return `
+    <span class="table-tag-list" data-tooltip="${escapeHtml(tags.join("、"))}">
+      ${visibleTags.map((tag) => `<span class="table-tag">${escapeHtml(tag)}</span>`).join("")}
+      ${hiddenCount > 0 ? `<span class="table-tag table-tag-more">+${hiddenCount}</span>` : ""}
+    </span>
+  `;
 }
 
 function renderDashboard() {
@@ -303,7 +523,7 @@ function renderInfluencers() {
             </div>
           </td>
           <td>${escapeHtml(item.platform)}</td>
-          <td>${escapeHtml(item.category || "-")}</td>
+          <td>${renderCategoryTags(item.category)}</td>
           <td>${formatNumber(item.followers_count)}</td>
           <td>${escapeHtml(item.owner || "-")}</td>
           <td>${escapeHtml(getPrimaryContact(item))}</td>
@@ -623,6 +843,7 @@ function openCreateDialog() {
   if (activeView === "contents" || activeView === "dashboard") {
     renderContentSelectOptions();
     contentForm.reset();
+    clearFormMessage(contentForm);
     contentForm.elements.id.value = "";
     contentForm.elements.status.value = "正常";
     contentForm.elements.content_type.value = "视频";
@@ -639,6 +860,7 @@ function openCreateDialog() {
 
   if (activeView === "projects") {
     projectForm.reset();
+    clearFormMessage(projectForm);
     projectForm.elements.id.value = "";
     projectForm.elements.status.value = "进行中";
     projectFormTitle.textContent = "新增项目";
@@ -649,9 +871,12 @@ function openCreateDialog() {
   }
 
   influencerForm.reset();
+  clearFormMessage(influencerForm);
   influencerForm.elements.id.value = "";
   influencerForm.elements.status.value = "正常";
   influencerForm.elements.followers_count.value = 0;
+  setInfluencerCategoryTags("");
+  closeInfluencerCategoryOptions();
   influencerFormTitle.textContent = "新增达人";
   influencerFormEyebrow.textContent = "NEW INFLUENCER";
   influencerForm.querySelector(".submit-button").textContent = "保存达人";
@@ -662,11 +887,14 @@ async function openInfluencerEditDialog(id) {
   try {
     const item = await requestJson(`/api/influencers/${id}`);
     influencerForm.reset();
+    clearFormMessage(influencerForm);
     Object.entries(item).forEach(([key, value]) => {
       if (influencerForm.elements[key]) {
         influencerForm.elements[key].value = value ?? "";
       }
     });
+    setInfluencerCategoryTags(item.category);
+    closeInfluencerCategoryOptions();
     influencerFormTitle.textContent = "编辑达人";
     influencerFormEyebrow.textContent = "EDIT INFLUENCER";
     influencerForm.querySelector(".submit-button").textContent = "保存修改";
@@ -680,6 +908,7 @@ async function openProjectEditDialog(id) {
   try {
     const item = await requestJson(`/api/projects/${id}`);
     projectForm.reset();
+    clearFormMessage(projectForm);
     Object.entries(item).forEach(([key, value]) => {
       if (projectForm.elements[key]) {
         projectForm.elements[key].value = value ?? "";
@@ -700,6 +929,7 @@ async function openContentEditDialog(id) {
     renderContentSelectOptions();
     const item = await requestJson(`/api/contents/${id}`);
     contentForm.reset();
+    clearFormMessage(contentForm);
     Object.entries(item).forEach(([key, value]) => {
       if (contentForm.elements[key]) {
         contentForm.elements[key].value = value ?? "";
@@ -741,6 +971,8 @@ async function syncContentData(id, button) {
 function getInfluencerPayload() {
   const formData = new FormData(influencerForm);
   const payload = Object.fromEntries(formData.entries());
+  payload.category = formData.getAll("category_tags").join("、");
+  delete payload.category_tags;
   payload.followers_count = Number(payload.followers_count || 0);
   return payload;
 }
@@ -764,6 +996,24 @@ document.querySelectorAll(".nav a[data-view]").forEach((link) => {
     event.preventDefault();
     switchView(link.dataset.view);
   });
+});
+
+influencerCategoryToggle?.addEventListener("click", () => {
+  const isOpen = influencerCategoryToggle.getAttribute("aria-expanded") === "true";
+  influencerCategoryOptionsElement.hidden = isOpen;
+  influencerCategoryToggle.setAttribute("aria-expanded", String(!isOpen));
+});
+
+influencerCategoryOptionsElement?.addEventListener("change", updateInfluencerCategorySummary);
+
+document.addEventListener("click", (event) => {
+  if (!influencerCategoryOptionsElement || influencerCategoryOptionsElement.hidden) {
+    return;
+  }
+  const clickedInside = event.target.closest(".tag-select");
+  if (!clickedInside) {
+    closeInfluencerCategoryOptions();
+  }
 });
 
 window.addEventListener("hashchange", () => {
@@ -874,6 +1124,7 @@ projectOwnerFilter.addEventListener("input", () => {
 });
 
 platformFilter.addEventListener("change", loadInfluencers);
+influencerCategoryFilter.addEventListener("change", loadInfluencers);
 projectStatusFilter.addEventListener("change", loadProjects);
 contentPlatformFilter.addEventListener("change", loadContents);
 contentProjectFilter.addEventListener("change", loadContents);
@@ -948,6 +1199,16 @@ influencerForm.addEventListener("submit", async (event) => {
 
   submitButton.disabled = true;
   submitButton.textContent = "保存中...";
+  clearFormMessage(influencerForm);
+
+  const fieldErrors = validateInfluencerPayload(payload);
+  if (Object.keys(fieldErrors).length > 0) {
+    showFieldErrors(influencerForm, fieldErrors);
+    showFormMessage(influencerForm, "请检查标红字段后再保存");
+    submitButton.disabled = false;
+    submitButton.textContent = isEdit ? "保存修改" : "保存达人";
+    return;
+  }
 
   try {
     const result = await requestJson(url, {
@@ -964,7 +1225,7 @@ influencerForm.addEventListener("submit", async (event) => {
     influencerDialog.close();
     showMessage(isEdit ? `已更新达人：${result.name}` : `已添加达人：${result.name}`);
   } catch (error) {
-    showMessage(error.message, "error");
+    showFormMessage(influencerForm, error.message);
   } finally {
     submitButton.disabled = false;
     submitButton.textContent = isEdit ? "保存修改" : "保存达人";
@@ -981,6 +1242,7 @@ projectForm.addEventListener("submit", async (event) => {
 
   submitButton.disabled = true;
   submitButton.textContent = "保存中...";
+  clearFormMessage(projectForm);
 
   try {
     const result = await requestJson(url, {
@@ -997,7 +1259,7 @@ projectForm.addEventListener("submit", async (event) => {
     projectDialog.close();
     showMessage(isEdit ? `已更新项目：${result.name}` : `已添加项目：${result.name}`);
   } catch (error) {
-    showMessage(error.message, "error");
+    showFormMessage(projectForm, error.message);
   } finally {
     submitButton.disabled = false;
     submitButton.textContent = isEdit ? "保存修改" : "保存项目";
@@ -1014,6 +1276,7 @@ contentForm.addEventListener("submit", async (event) => {
 
   submitButton.disabled = true;
   submitButton.textContent = "保存中...";
+  clearFormMessage(contentForm);
 
   try {
     const result = await requestJson(url, {
@@ -1030,12 +1293,15 @@ contentForm.addEventListener("submit", async (event) => {
     contentDialog.close();
     showMessage(isEdit ? `已更新内容：${result.title}` : `已添加内容：${result.title}`);
   } catch (error) {
-    showMessage(error.message, "error");
+    showFormMessage(contentForm, error.message);
   } finally {
     submitButton.disabled = false;
     submitButton.textContent = isEdit ? "保存修改" : "保存内容";
   }
 });
+
+renderInfluencerCategoryOptions();
+renderInfluencerCategoryFilterOptions();
 
 loadCurrentUser()
   .then(() => {

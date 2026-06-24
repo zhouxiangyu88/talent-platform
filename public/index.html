@@ -96,11 +96,14 @@
               <option value="B站">B站</option>
               <option value="视频号">视频号</option>
               <option value="微博">微博</option>
+              <option value="快手">快手</option>
             </select>
           </label>
           <label>
             达人分类
-            <input id="influencer-category-filter" type="search" placeholder="例如：美妆" />
+            <select id="influencer-category-filter">
+              <option value="">全部分类</option>
+            </select>
           </label>
           <label>
             负责人
@@ -208,6 +211,7 @@
               <option value="B站">B站</option>
               <option value="视频号">视频号</option>
               <option value="微博">微博</option>
+              <option value="快手">快手</option>
             </select>
           </label>
           <label>
@@ -276,6 +280,7 @@
           </div>
           <button class="icon-button dialog-close-button" type="button" aria-label="关闭">×</button>
         </div>
+        <div class="form-message error" hidden></div>
 
         <div class="form-row">
           <label>
@@ -290,6 +295,8 @@
               <option value="B站">B站</option>
               <option value="视频号">视频号</option>
               <option value="微博">微博</option>
+              <option value="快手">快手</option>
+              <option value="其他">其他</option>
             </select>
           </label>
         </div>
@@ -302,14 +309,21 @@
           <label>
             主页链接
             <input name="profile_url" maxlength="300" placeholder="达人主页 URL" />
+            <small class="field-error" data-error-for="profile_url" hidden></small>
           </label>
         </div>
 
         <div class="form-row">
-          <label>
+          <fieldset class="tag-fieldset">
             达人分类
-            <input name="category" maxlength="30" placeholder="例如：美食、科技、母婴" />
-          </label>
+            <div class="tag-select">
+              <button id="influencer-category-toggle" class="tag-select-toggle" type="button" aria-expanded="false">
+                <span id="influencer-category-summary" class="tag-select-summary">选择一个或多个分类</span>
+                <span class="tag-select-arrow">⌄</span>
+              </button>
+              <div id="influencer-category-options" class="tag-options" aria-label="达人分类多选" hidden></div>
+            </div>
+          </fieldset>
           <label>
             粉丝数
             <input name="followers_count" type="number" min="0" value="0" />
@@ -323,14 +337,16 @@
           </label>
           <label>
             手机号
-            <input name="phone" maxlength="40" placeholder="手机号" />
+            <input name="phone" maxlength="40" placeholder="例如：13800138000" />
+            <small class="field-error" data-error-for="phone" hidden></small>
           </label>
         </div>
 
         <div class="form-row">
           <label>
             邮箱
-            <input name="email" maxlength="120" placeholder="邮箱" />
+            <input name="email" type="text" inputmode="email" maxlength="120" placeholder="例如：name@example.com" />
+            <small class="field-error" data-error-for="email" hidden></small>
           </label>
           <label>
             负责人
@@ -372,6 +388,7 @@
           </div>
           <button class="icon-button dialog-close-button" type="button" aria-label="关闭">×</button>
         </div>
+        <div class="form-message error" hidden></div>
 
         <label>
           项目名称 <span>必填</span>
@@ -430,6 +447,7 @@
           </div>
           <button class="icon-button dialog-close-button" type="button" aria-label="关闭">×</button>
         </div>
+        <div class="form-message error" hidden></div>
 
         <label>
           内容标题 <span>必填</span>
