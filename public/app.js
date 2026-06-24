@@ -271,6 +271,11 @@ function formatDate(value) {
   return value.replace("T", " ").slice(0, 16);
 }
 
+function truncateText(value, maxLength = 16) {
+  const text = String(value || "");
+  return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
+}
+
 function getInitials(name) {
   return String(name || "?").slice(0, 1).toUpperCase();
 }
@@ -565,11 +570,11 @@ function renderProjects() {
       (item) => `
         <tr>
           <td>
-            <div class="creator-cell">
+            <div class="creator-cell project-title-cell">
               <span class="avatar">${escapeHtml(getInitials(item.name))}</span>
               <div>
-                <strong>${escapeHtml(item.name)}</strong>
-                <small>${escapeHtml(item.description || "未填写项目说明")}</small>
+                <strong class="tooltip-text" data-tooltip="${escapeHtml(item.name || "-")}">${escapeHtml(truncateText(item.name, 10))}</strong>
+                <small class="tooltip-text" data-tooltip="${escapeHtml(item.description || "未填写项目说明")}">${escapeHtml(item.description ? truncateText(item.description, 12) : "未填写项目说明")}</small>
               </div>
             </div>
           </td>
@@ -599,7 +604,7 @@ function renderContents() {
   if (contents.length === 0) {
     contentListElement.innerHTML = `
       <tr>
-        <td class="empty-state" colspan="9">还没有匹配的内容，可以调整筛选条件或新增内容。</td>
+        <td class="empty-state" colspan="10">还没有匹配的内容，可以调整筛选条件或新增内容。</td>
       </tr>
     `;
     renderStats();
@@ -611,21 +616,22 @@ function renderContents() {
       (item) => `
         <tr>
           <td>
-            <div class="creator-cell">
+            <div class="creator-cell content-title-cell">
               <span class="avatar">${escapeHtml(getInitials(item.title))}</span>
               <div>
-                <strong>${renderExternalLink(item.title, item.content_url)}</strong>
+                <strong title="${escapeHtml(item.title || "")}">${renderExternalLink(truncateText(item.title), item.content_url)}</strong>
                 <small>${escapeHtml(item.content_type || "未填写类型")}</small>
               </div>
             </div>
           </td>
           <td>${escapeHtml(item.influencer_name || "-")}</td>
           <td>${escapeHtml(item.platform || "-")}</td>
-          <td>${escapeHtml(item.project_name || "-")}</td>
+          <td class="truncated-cell" title="${escapeHtml(item.project_name || "")}">${escapeHtml(item.project_name ? truncateText(item.project_name, 10) : "-")}</td>
           <td>${escapeHtml(item.published_at || "-")}</td>
           <td>${formatNumber(item.view_count)}</td>
           <td>${formatNumber(item.interaction_count)}</td>
           <td><span class="status status-${escapeHtml(item.sync_status)}">${escapeHtml(item.sync_status || "待同步")}</span></td>
+          <td>${formatDate(item.last_sync_at || item.updated_at)}</td>
           <td>
             <div class="table-actions">
               <button class="link-button" type="button" data-type="content" data-action="detail" data-id="${item.id}">详情</button>
@@ -792,6 +798,8 @@ async function loadContentDetail(id) {
     ${renderDetailItem("转发", formatNumber(item.share_count))}
     ${renderDetailItem("互动量", formatNumber(item.interaction_count))}
     ${renderDetailItem("同步状态", item.sync_status)}
+    ${renderDetailItem("最近同步时间", formatDate(item.last_sync_at))}
+    ${renderDetailItem("数据更新时间", formatDate(item.updated_at))}
     ${renderDetailItem("失败原因", item.failed_reason)}
     ${renderDetailItem("备注", item.remark)}
   `;

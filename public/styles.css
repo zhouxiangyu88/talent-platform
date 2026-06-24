@@ -466,10 +466,78 @@ td {
   font-size: 14px;
 }
 
+.truncated-cell {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .creator-cell {
   display: flex;
   align-items: center;
   gap: 11px;
+}
+
+.content-title-cell {
+  max-width: 300px;
+}
+
+.project-title-cell {
+  max-width: 260px;
+}
+
+.content-title-cell > div,
+.project-title-cell > div {
+  min-width: 0;
+}
+
+.content-title-cell strong,
+.content-title-cell .external-text-link,
+.project-title-cell strong,
+.project-title-cell small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.content-title-cell strong,
+.content-title-cell .external-text-link {
+  max-width: 240px;
+}
+
+.project-title-cell strong,
+.project-title-cell small {
+  max-width: 200px;
+}
+
+.tooltip-text {
+  position: relative;
+}
+
+.tooltip-text:hover {
+  overflow: visible;
+}
+
+.tooltip-text:hover::after {
+  position: absolute;
+  z-index: 50;
+  left: 0;
+  top: calc(100% + 8px);
+  width: max-content;
+  max-width: 360px;
+  border: 1px solid #d7deeb;
+  border-radius: 10px;
+  padding: 9px 11px;
+  color: #1f2a44;
+  background: white;
+  box-shadow: 0 14px 32px rgba(23, 35, 61, 0.16);
+  content: attr(data-tooltip);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: normal;
 }
 
 .creator-cell strong,
@@ -606,6 +674,9 @@ td {
 }
 
 .message {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   margin-bottom: 18px;
   padding: 12px 14px;
   border-radius: 10px;
