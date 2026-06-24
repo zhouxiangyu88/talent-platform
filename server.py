@@ -5,6 +5,7 @@ import secrets
 import sqlite3
 import hashlib
 import hmac
+from datetime import date
 from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -413,6 +414,13 @@ def initialize_database():
             WHERE project_code != ''
             """
         )
+        connection.execute(
+            """
+            UPDATE projects
+            SET status = '已归档'
+            WHERE status = '归档'
+            """
+        )
 
         project_count = connection.execute(
             "SELECT COUNT(*) AS total FROM projects"
@@ -571,7 +579,13 @@ def influencer_to_dict(row):
 
 
 def project_to_dict(row):
-    return dict(row)
+    result = dict(row)
+    result["status"] = compute_project_status(
+        result.get("status"),
+        result.get("start_date"),
+        result.get("end_date"),
+    )
+    return result
 
 
 def content_to_dict(row):
@@ -809,6 +823,33 @@ def clean_optional_id(payload, key):
     return value
 
 
+def parse_project_date(value, field_name):
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text)
+    except ValueError as error:
+        raise ValueError(f"{field_name}格式不正确") from error
+
+
+def compute_project_status(status, start_date="", end_date=""):
+    if status in {"已归档", "归档"}:
+        return "已归档"
+
+    today = date.today()
+    start = parse_project_date(start_date, "开始日期")
+    end = parse_project_date(end_date, "结束日期")
+
+    if start and end and end < start:
+        raise ValueError("结束日期不能早于开始日期")
+    if start and today < start:
+        return "未开始"
+    if end and today > end:
+        return "已结束"
+    return "进行中"
+
+
 def normalize_influencer_payload(payload):
     name = clean_text(payload, "name")
     platform = clean_text(payload, "platform")
@@ -854,20 +895,23 @@ def normalize_influencer_payload(payload):
 
 def normalize_project_payload(payload):
     name = clean_text(payload, "name")
-    status = clean_text(payload, "status", "进行中") or "进行中"
+    status = clean_text(payload, "status", "自动判断") or "自动判断"
+    start_date = clean_text(payload, "start_date")
+    end_date = clean_text(payload, "end_date")
 
     if not name:
         raise ValueError("项目名称不能为空")
-    if status not in {"进行中", "已结束", "归档"}:
-        raise ValueError("项目状态只能是进行中、已结束或归档")
+    if status not in {"自动判断", "未开始", "进行中", "已结束", "归档", "已归档"}:
+        raise ValueError("项目状态不正确")
+    status = "已归档" if status in {"归档", "已归档"} else compute_project_status(status, start_date, end_date)
 
     return {
         "name": name,
         "project_code": clean_text(payload, "project_code"),
         "status": status,
         "owner": clean_text(payload, "owner"),
-        "start_date": clean_text(payload, "start_date"),
-        "end_date": clean_text(payload, "end_date"),
+        "start_date": start_date,
+        "end_date": end_date,
         "description": clean_text(payload, "description"),
     }
 
@@ -1065,7 +1109,6 @@ def get_dashboard_summary(connection):
             (SELECT COUNT(*) FROM influencers) AS influencer_count,
             (SELECT COUNT(*) FROM influencers WHERE status = '正常') AS active_influencer_count,
             (SELECT COUNT(*) FROM projects) AS project_count,
-            (SELECT COUNT(*) FROM projects WHERE status = '进行中') AS active_project_count,
             (SELECT COUNT(*) FROM contents) AS content_count,
             COALESCE((SELECT SUM(view_count) FROM content_metrics), 0) AS total_views,
             COALESCE((
@@ -1074,6 +1117,15 @@ def get_dashboard_summary(connection):
             ), 0) AS total_interactions
         """
     ).fetchone()
+    totals = dict(totals)
+    project_rows = connection.execute(
+        "SELECT status, start_date, end_date FROM projects"
+    ).fetchall()
+    totals["active_project_count"] = sum(
+        1
+        for row in project_rows
+        if compute_project_status(row["status"], row["start_date"], row["end_date"]) == "进行中"
+    )
 
     recent_contents = connection.execute(
         """
@@ -1117,7 +1169,7 @@ def get_dashboard_summary(connection):
     ).fetchall()
 
     return {
-        "totals": dict(totals),
+        "totals": totals,
         "recent_contents": [dict(row) for row in recent_contents],
         "platform_distribution": [dict(row) for row in platform_distribution],
         "sync_distribution": [dict(row) for row in sync_distribution],
@@ -1326,9 +1378,6 @@ class TalentPlatformHandler(SimpleHTTPRequestHandler):
             if keyword:
                 where.append("(name LIKE ? OR project_code LIKE ?)")
                 values.extend([f"%{keyword}%", f"%{keyword}%"])
-            if status:
-                where.append("status = ?")
-                values.append(status)
             if owner:
                 where.append("owner LIKE ?")
                 values.append(f"%{owner}%")
@@ -1341,7 +1390,10 @@ class TalentPlatformHandler(SimpleHTTPRequestHandler):
 
             with get_connection() as connection:
                 rows = connection.execute(sql, values).fetchall()
-            self.send_json([project_to_dict(row) for row in rows])
+            projects = [project_to_dict(row) for row in rows]
+            if status:
+                projects = [project for project in projects if project["status"] == status]
+            self.send_json(projects)
             return
 
         if path.startswith("/api/projects/"):

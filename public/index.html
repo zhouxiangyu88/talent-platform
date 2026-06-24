@@ -157,9 +157,10 @@
             项目状态
             <select id="project-status-filter">
               <option value="">全部状态</option>
+              <option value="未开始">未开始</option>
               <option value="进行中">进行中</option>
               <option value="已结束">已结束</option>
-              <option value="归档">归档</option>
+              <option value="已归档">已归档</option>
             </select>
           </label>
           <label>
@@ -401,11 +402,13 @@
             <input name="project_code" maxlength="50" placeholder="例如：PRJ-2026-SUMMER" />
           </label>
           <label>
-            项目状态
+            <span class="label-title">
+              项目状态
+              <span class="label-hint" data-tooltip="未归档项目会按日期自动显示为未开始、进行中或已结束。">?</span>
+            </span>
             <select name="status" required>
-              <option value="进行中">进行中</option>
-              <option value="已结束">已结束</option>
-              <option value="归档">归档</option>
+              <option value="自动判断">自动判断（按开始/结束日期）</option>
+              <option value="已归档">已归档</option>
             </select>
           </label>
         </div>

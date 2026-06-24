@@ -563,12 +563,18 @@ td {
   background: #e8f0ff;
 }
 
+.status-未开始 {
+  color: #485670;
+  background: #eef1f6;
+}
+
 .status-已结束 {
   color: #8a5a00;
   background: #fff3d6;
 }
 
-.status-归档 {
+.status-归档,
+.status-已归档 {
   color: #647085;
   background: #edf0f5;
 }
@@ -716,6 +722,54 @@ label span {
   margin-left: 4px;
   color: #e5484d;
   font-size: 12px;
+}
+
+label .label-title {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  margin-left: 0;
+  color: #485670;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+label .label-hint {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin-left: 6px;
+  border-radius: 999px;
+  color: #71809d;
+  background: #eef3ff;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: help;
+}
+
+label .label-hint:hover::after {
+  position: absolute;
+  z-index: 40;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  width: max-content;
+  max-width: 300px;
+  transform: translateX(-50%);
+  border: 1px solid #d7deeb;
+  border-radius: 10px;
+  padding: 9px 11px;
+  color: #1f2a44;
+  background: white;
+  box-shadow: 0 14px 32px rgba(23, 35, 61, 0.16);
+  content: attr(data-tooltip);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+  white-space: normal;
 }
 
 input,

@@ -862,7 +862,7 @@ function openCreateDialog() {
     projectForm.reset();
     clearFormMessage(projectForm);
     projectForm.elements.id.value = "";
-    projectForm.elements.status.value = "进行中";
+    projectForm.elements.status.value = "自动判断";
     projectFormTitle.textContent = "新增项目";
     projectFormEyebrow.textContent = "NEW PROJECT";
     projectForm.querySelector(".submit-button").textContent = "保存项目";
@@ -914,6 +914,7 @@ async function openProjectEditDialog(id) {
         projectForm.elements[key].value = value ?? "";
       }
     });
+    projectForm.elements.status.value = item.status === "已归档" ? "已归档" : "自动判断";
     projectFormTitle.textContent = "编辑项目";
     projectFormEyebrow.textContent = "EDIT PROJECT";
     projectForm.querySelector(".submit-button").textContent = "保存修改";
