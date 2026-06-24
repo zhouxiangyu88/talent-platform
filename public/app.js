@@ -55,10 +55,14 @@ const viewsMinFilter = document.querySelector("#views-min-filter");
 const viewsMaxFilter = document.querySelector("#views-max-filter");
 const interactionsMinFilter = document.querySelector("#interactions-min-filter");
 const interactionsMaxFilter = document.querySelector("#interactions-max-filter");
-const contentInfluencerSelect = document.querySelector("#content-influencer-select");
+const contentInfluencerPlatformSelect = document.querySelector("#content-influencer-platform-select");
+const contentInfluencerSearchInput = document.querySelector("#content-influencer-search-input");
+const contentInfluencerOptionsElement = document.querySelector("#content-influencer-options");
+const contentInfluencerIdInput = document.querySelector("#content-influencer-id");
 const contentProjectSelect = document.querySelector("#content-project-select");
 
 let influencers = [];
+let contentInfluencerOptions = [];
 let projects = [];
 let contents = [];
 let dashboardSummary = null;
@@ -657,6 +661,10 @@ async function loadInfluencers() {
   }
 }
 
+async function loadContentInfluencerOptions() {
+  contentInfluencerOptions = await requestJson("/api/influencers");
+}
+
 async function loadDashboard() {
   try {
     dashboardSummary = await requestJson("/api/dashboard/summary");
@@ -807,17 +815,70 @@ function renderDetailItem(label, value, isLink = false) {
 }
 
 function renderContentSelectOptions() {
-  contentInfluencerSelect.innerHTML = `
-    <option value="">请选择达人</option>
-    ${influencers
-      .map(
-        (item) =>
-          `<option value="${item.id}">${escapeHtml(item.name)} / ${escapeHtml(item.platform)}</option>`,
-      )
-      .join("")}
-  `;
-
+  renderContentInfluencerOptions();
   renderProjectOptions();
+}
+
+function getContentInfluencerLabel(item) {
+  const account = item.account_id ? ` / ${item.account_id}` : "";
+  return `${item.name}${account}`;
+}
+
+function getSelectedContentInfluencer() {
+  const selectedPlatform = contentInfluencerPlatformSelect.value;
+  const selectedId = Number(contentInfluencerIdInput.value || 0);
+  if (selectedId) {
+    return (
+      contentInfluencerOptions.find(
+        (item) => item.id === selectedId && (!selectedPlatform || item.platform === selectedPlatform),
+      ) || null
+    );
+  }
+  const keyword = contentInfluencerSearchInput.value.trim();
+  const candidates = selectedPlatform
+    ? contentInfluencerOptions.filter((item) => item.platform === selectedPlatform)
+    : contentInfluencerOptions;
+  return (
+    candidates.find((item) => getContentInfluencerLabel(item) === keyword)
+    || candidates.find((item) => item.name === keyword)
+    || null
+  );
+}
+
+function renderContentInfluencerOptions(selectedId = "") {
+  const selectedPlatform = contentInfluencerPlatformSelect.value;
+  const selectedIdNumber = Number(selectedId || contentInfluencerIdInput.value || 0);
+  const selectedItem = selectedIdNumber
+    ? contentInfluencerOptions.find((item) => item.id === selectedIdNumber)
+    : null;
+  const platform = selectedPlatform || selectedItem?.platform || "";
+
+  if (platform && contentInfluencerPlatformSelect.value !== platform) {
+    contentInfluencerPlatformSelect.value = platform;
+  }
+
+  const filteredInfluencers = platform
+    ? contentInfluencerOptions.filter((item) => item.platform === platform)
+    : [];
+
+  contentInfluencerOptionsElement.innerHTML = filteredInfluencers
+    .map(
+      (item) =>
+        `<option value="${escapeHtml(getContentInfluencerLabel(item))}" data-id="${item.id}"></option>`,
+    )
+    .join("");
+
+  if (selectedItem) {
+    contentInfluencerSearchInput.value = getContentInfluencerLabel(selectedItem);
+    contentInfluencerIdInput.value = selectedItem.id;
+  } else {
+    contentInfluencerIdInput.value = "";
+  }
+
+  contentInfluencerSearchInput.placeholder = platform
+    ? `搜索${platform}达人`
+    : "请先选择媒体平台";
+  contentInfluencerSearchInput.disabled = !platform;
 }
 
 function renderProjectOptions() {
@@ -841,20 +902,7 @@ function renderProjectOptions() {
 
 function openCreateDialog() {
   if (activeView === "contents" || activeView === "dashboard") {
-    renderContentSelectOptions();
-    contentForm.reset();
-    clearFormMessage(contentForm);
-    contentForm.elements.id.value = "";
-    contentForm.elements.status.value = "正常";
-    contentForm.elements.content_type.value = "视频";
-    contentForm.elements.sync_status.value = "待同步";
-    ["view_count", "like_count", "comment_count", "collect_count", "share_count"].forEach((key) => {
-      contentForm.elements[key].value = 0;
-    });
-    contentFormTitle.textContent = "新增内容";
-    contentFormEyebrow.textContent = "NEW CONTENT";
-    contentForm.querySelector(".submit-button").textContent = "保存内容";
-    contentDialog.showModal();
+    openContentCreateDialog();
     return;
   }
 
@@ -881,6 +929,29 @@ function openCreateDialog() {
   influencerFormEyebrow.textContent = "NEW INFLUENCER";
   influencerForm.querySelector(".submit-button").textContent = "保存达人";
   influencerDialog.showModal();
+}
+
+async function openContentCreateDialog() {
+  try {
+    await Promise.all([loadContentInfluencerOptions(), loadProjects()]);
+    contentForm.reset();
+    clearFormMessage(contentForm);
+    contentForm.elements.id.value = "";
+    contentForm.elements.status.value = "正常";
+    contentForm.elements.content_type.value = "视频";
+    contentInfluencerPlatformSelect.value = "";
+    contentInfluencerSearchInput.value = "";
+    renderContentSelectOptions();
+    ["view_count", "like_count", "comment_count", "collect_count", "share_count"].forEach((key) => {
+      contentForm.elements[key].value = 0;
+    });
+    contentFormTitle.textContent = "新增内容";
+    contentFormEyebrow.textContent = "NEW CONTENT";
+    contentForm.querySelector(".submit-button").textContent = "保存内容";
+    contentDialog.showModal();
+  } catch (error) {
+    showMessage(error.message, "error");
+  }
 }
 
 async function openInfluencerEditDialog(id) {
@@ -926,7 +997,7 @@ async function openProjectEditDialog(id) {
 
 async function openContentEditDialog(id) {
   try {
-    await Promise.all([loadInfluencers(), loadProjects()]);
+    await Promise.all([loadContentInfluencerOptions(), loadProjects()]);
     renderContentSelectOptions();
     const item = await requestJson(`/api/contents/${id}`);
     contentForm.reset();
@@ -936,6 +1007,7 @@ async function openContentEditDialog(id) {
         contentForm.elements[key].value = value ?? "";
       }
     });
+    renderContentInfluencerOptions(item.influencer_id);
     contentFormTitle.textContent = "编辑内容";
     contentFormEyebrow.textContent = "EDIT CONTENT";
     contentForm.querySelector(".submit-button").textContent = "保存修改";
@@ -986,6 +1058,11 @@ function getProjectPayload() {
 function getContentPayload() {
   const formData = new FormData(contentForm);
   const payload = Object.fromEntries(formData.entries());
+  const selectedInfluencer = getSelectedContentInfluencer();
+  if (!selectedInfluencer) {
+    throw new Error("请先选择媒体平台，并从候选中选择一个达人");
+  }
+  payload.influencer_id = String(selectedInfluencer.id);
   ["view_count", "like_count", "comment_count", "collect_count", "share_count"].forEach((key) => {
     payload[key] = Number(payload[key] || 0);
   });
@@ -1129,6 +1206,15 @@ influencerCategoryFilter.addEventListener("change", loadInfluencers);
 projectStatusFilter.addEventListener("change", loadProjects);
 contentPlatformFilter.addEventListener("change", loadContents);
 contentProjectFilter.addEventListener("change", loadContents);
+contentInfluencerPlatformSelect.addEventListener("change", () => {
+  contentInfluencerSearchInput.value = "";
+  contentInfluencerIdInput.value = "";
+  renderContentInfluencerOptions();
+});
+contentInfluencerSearchInput.addEventListener("input", () => {
+  const selectedInfluencer = getSelectedContentInfluencer();
+  contentInfluencerIdInput.value = selectedInfluencer ? selectedInfluencer.id : "";
+});
 
 influencerListElement.addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-action]");
@@ -1270,16 +1356,15 @@ projectForm.addEventListener("submit", async (event) => {
 contentForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const submitButton = contentForm.querySelector('button[type="submit"]');
-  const payload = getContentPayload();
-  const isEdit = Boolean(payload.id);
-  const url = isEdit ? `/api/contents/${payload.id}` : "/api/contents";
-  const method = isEdit ? "PUT" : "POST";
-
   submitButton.disabled = true;
   submitButton.textContent = "保存中...";
   clearFormMessage(contentForm);
 
   try {
+    const payload = getContentPayload();
+    const isEdit = Boolean(payload.id);
+    const url = isEdit ? `/api/contents/${payload.id}` : "/api/contents";
+    const method = isEdit ? "PUT" : "POST";
     const result = await requestJson(url, {
       method,
       headers: { "Content-Type": "application/json" },
@@ -1297,7 +1382,7 @@ contentForm.addEventListener("submit", async (event) => {
     showFormMessage(contentForm, error.message);
   } finally {
     submitButton.disabled = false;
-    submitButton.textContent = isEdit ? "保存修改" : "保存内容";
+    submitButton.textContent = contentForm.elements.id.value ? "保存修改" : "保存内容";
   }
 });
 

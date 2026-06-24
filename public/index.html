@@ -453,28 +453,46 @@
         <div class="form-message error" hidden></div>
 
         <label>
-          内容标题 <span>必填</span>
+          <span class="label-title">内容标题 <span class="required-mark">必填</span></span>
           <input name="title" required maxlength="120" placeholder="例如：夏季新品开箱测评" />
         </label>
 
         <div class="form-row">
           <label>
-            关联达人 <span>必填</span>
-            <select id="content-influencer-select" name="influencer_id" required></select>
+            <span class="label-title">达人媒体 <span class="required-mark">必填</span></span>
+            <select id="content-influencer-platform-select" required>
+              <option value="">先选择媒体平台</option>
+              <option value="小红书">小红书</option>
+              <option value="抖音">抖音</option>
+              <option value="B站">B站</option>
+              <option value="视频号">视频号</option>
+              <option value="微博">微博</option>
+              <option value="快手">快手</option>
+              <option value="其他">其他</option>
+            </select>
           </label>
           <label>
-            关联项目
+            <span class="label-title">关联达人 <span class="required-mark">必填</span></span>
+            <input id="content-influencer-search-input" list="content-influencer-options" placeholder="输入达人名称搜索" autocomplete="off" required />
+            <datalist id="content-influencer-options"></datalist>
+            <input id="content-influencer-id" name="influencer_id" type="hidden" />
+          </label>
+        </div>
+
+        <div class="form-row">
+          <label>
+            <span class="label-title">关联项目</span>
             <select id="content-project-select" name="project_id"></select>
           </label>
         </div>
 
         <div class="form-row">
           <label>
-            内容链接 <span>必填</span>
+            <span class="label-title">内容链接 <span class="required-mark">必填</span></span>
             <input name="content_url" required maxlength="500" placeholder="发布后的内容链接" />
           </label>
           <label>
-            发布时间 <span>必填</span>
+            <span class="label-title">发布时间 <span class="required-mark">必填</span></span>
             <input name="published_at" type="date" required />
           </label>
         </div>
@@ -485,7 +503,6 @@
             <select name="content_type">
               <option value="视频">视频</option>
               <option value="图文">图文</option>
-              <option value="直播切片">直播切片</option>
               <option value="其他">其他</option>
             </select>
           </label>
@@ -523,29 +540,18 @@
             <input name="share_count" type="number" min="0" value="0" />
           </label>
           <label>
-            同步状态
-            <select name="sync_status">
-              <option value="待同步">待同步</option>
-              <option value="同步成功">同步成功</option>
-              <option value="同步失败">同步失败</option>
-              <option value="暂不支持">暂不支持</option>
-            </select>
-          </label>
-        </div>
-
-        <div class="form-row">
-          <label>
             内容状态
             <select name="status" required>
               <option value="正常">正常</option>
               <option value="作废">作废</option>
             </select>
           </label>
-          <label>
-            备注
-            <input name="remark" maxlength="300" placeholder="补充说明" />
-          </label>
         </div>
+
+        <label>
+          备注
+          <input name="remark" maxlength="300" placeholder="补充说明" />
+        </label>
 
         <button class="primary-button submit-button" type="submit">保存内容</button>
       </form>

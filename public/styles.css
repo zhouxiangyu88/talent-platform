@@ -735,6 +735,13 @@ label .label-title {
   line-height: 1.35;
 }
 
+label .required-mark {
+  margin-left: 6px;
+  color: #e5484d;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 label .label-hint {
   position: relative;
   display: inline-flex;

@@ -935,6 +935,8 @@ def normalize_content_payload(payload, connection):
         raise ValueError("发布时间不能为空")
     if status not in {"正常", "作废"}:
         raise ValueError("内容状态只能是正常或作废")
+    if content_type not in {"视频", "图文", "其他"}:
+        raise ValueError("内容类型只能是视频、图文或其他")
 
     influencer = fetch_influencer(connection, influencer_id)
     if influencer is None:
@@ -1987,10 +1989,10 @@ class TalentPlatformHandler(SimpleHTTPRequestHandler):
                     """
                     INSERT INTO content_metrics
                         (content_id, view_count, like_count, comment_count, collect_count,
-                         share_count, data_source, sync_status, updated_at)
+                         share_count, data_source, updated_at)
                     VALUES
                         (:id, :view_count, :like_count, :comment_count, :collect_count,
-                         :share_count, :data_source, :sync_status, CURRENT_TIMESTAMP)
+                         :share_count, :data_source, CURRENT_TIMESTAMP)
                     ON CONFLICT(content_id) DO UPDATE SET
                         view_count = excluded.view_count,
                         like_count = excluded.like_count,
@@ -1998,7 +2000,6 @@ class TalentPlatformHandler(SimpleHTTPRequestHandler):
                         collect_count = excluded.collect_count,
                         share_count = excluded.share_count,
                         data_source = excluded.data_source,
-                        sync_status = excluded.sync_status,
                         updated_at = CURRENT_TIMESTAMP
                     """,
                     update_payload,
